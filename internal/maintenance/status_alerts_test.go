@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"github.com/Battery233/sim/internal/store"
+	"github.com/Battery233/sim-harbor/internal/store"
 	"path/filepath"
 	"testing"
 )

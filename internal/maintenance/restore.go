@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/Battery233/sim/internal/store"
+	"github.com/Battery233/sim-harbor/internal/store"
 )
 
 var ErrConfirmation = errors.New("backup_confirmation_mismatch")

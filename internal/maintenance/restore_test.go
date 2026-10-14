@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Battery233/sim/internal/outbound"
-	"github.com/Battery233/sim/internal/store"
+	"github.com/Battery233/sim-harbor/internal/outbound"
+	"github.com/Battery233/sim-harbor/internal/store"
 )
 
 func TestRestoreKeepsHistoryButBlocksEveryOutboundAndHoldsOldPushes(t *testing.T) {

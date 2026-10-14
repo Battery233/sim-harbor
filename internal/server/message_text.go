@@ -3,7 +3,7 @@ package server
 import (
 	"strings"
 
-	"github.com/Battery233/sim/internal/store"
+	"github.com/Battery233/sim-harbor/internal/store"
 )
 
 // formatIncomingText is an explicit firmware compatibility policy, not JSON

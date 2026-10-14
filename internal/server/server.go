@@ -20,10 +20,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/Battery233/sim/internal/config"
-	"github.com/Battery233/sim/internal/diagnostics"
-	"github.com/Battery233/sim/internal/protocol"
-	"github.com/Battery233/sim/internal/store"
+	"github.com/Battery233/sim-harbor/internal/config"
+	"github.com/Battery233/sim-harbor/internal/diagnostics"
+	"github.com/Battery233/sim-harbor/internal/protocol"
+	"github.com/Battery233/sim-harbor/internal/store"
+	"github.com/Battery233/sim-harbor/internal/version"
 )
 
 type session struct {
@@ -54,6 +55,9 @@ type Server struct {
 	conns            map[net.Conn]struct{}
 	sendGate         sync.Mutex
 	backupGate       sync.Mutex
+	migrationGate    sync.Mutex
+	migrationBackup  *migrationBackup
+	migrationPreview *migrationPreview
 	settingsGate     sync.Mutex
 	notificationGate sync.Mutex
 	exportGate       sync.Mutex
@@ -289,7 +293,7 @@ func (s *Server) Handler() http.Handler {
 			reply(w, 503, map[string]string{"status": "degraded"})
 			return
 		}
-		reply(w, 200, map[string]string{"status": "ok"})
+		reply(w, 200, map[string]string{"status": "ok", "version": version.Version})
 	})
 	mux.HandleFunc("GET /api/state", func(w http.ResponseWriter, r *http.Request) {
 		s.mu.Lock()
@@ -326,6 +330,7 @@ func (s *Server) Handler() http.Handler {
 		state["stale_seconds"] = s.Config.StaleSeconds
 		state["status_refresh_seconds"] = int(s.statusRefreshInterval() / time.Second)
 		state["environment"] = s.Config.Environment
+		state["version"] = version.Version
 		state["bark_enabled"] = s.Config.BarkKey != ""
 		alerts, err := s.Store.StatusAlertSummary(r.Context())
 		if err != nil {
@@ -359,6 +364,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/messages/{id}/delete", s.deleteMessage)
 	mux.HandleFunc("GET /api/messages/export", s.exportMessages)
 	mux.HandleFunc("POST /api/backups/download", s.downloadBackup)
+	s.migrationRoutes(mux)
 	mux.HandleFunc("GET /api/messages", func(w http.ResponseWriter, r *http.Request) {
 		slot, e := strconv.Atoi(r.URL.Query().Get("slot"))
 		if r.URL.Query().Get("slot") == "" {

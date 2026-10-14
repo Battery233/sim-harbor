@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Battery233/sim/internal/config"
-	"github.com/Battery233/sim/internal/diagnostics"
-	"github.com/Battery233/sim/internal/protocol"
+	"github.com/Battery233/sim-harbor/internal/config"
+	"github.com/Battery233/sim-harbor/internal/diagnostics"
+	"github.com/Battery233/sim-harbor/internal/protocol"
 )
 
 func TestDiagnosticAccessAndRepeatedReadsNeverWriteBoard(t *testing.T) {

@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Battery233/sim/internal/store"
+	"github.com/Battery233/sim-harbor/internal/store"
 )
 
 const MaxArchive int64 = store.BackupBytes + (16 << 20)
@@ -294,6 +294,13 @@ func databaseInfo(ctx context.Context, path string) (Manifest, error) {
 	}
 	if m.Schema >= 6 {
 		r, err := db.QueryContext(ctx, `SELECT card_name FROM messages LIMIT 0`)
+		if err != nil {
+			return m, ErrInvalidBackup
+		}
+		r.Close()
+	}
+	if m.Schema >= 15 {
+		r, err := db.QueryContext(ctx, `SELECT restore_id,confirmed_at,confirmation_backup_sha256,confirmation_policy FROM recovery_guard LIMIT 0`)
 		if err != nil {
 			return m, ErrInvalidBackup
 		}

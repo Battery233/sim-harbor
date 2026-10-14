@@ -9,8 +9,8 @@ import (
 	"net"
 	"time"
 
-	"github.com/Battery233/sim/internal/diagnostics"
-	"github.com/Battery233/sim/internal/protocol"
+	"github.com/Battery233/sim-harbor/internal/diagnostics"
+	"github.com/Battery233/sim-harbor/internal/protocol"
 )
 
 func readFailure(err error) string {

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Battery233/sim/internal/protocol"
+	"github.com/Battery233/sim-harbor/internal/protocol"
 )
 
 func TestCardNameSnapshotSurvivesReplayRetryAndRestart(t *testing.T) {

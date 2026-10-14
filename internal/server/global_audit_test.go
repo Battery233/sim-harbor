@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Battery233/sim/internal/config"
+	"github.com/Battery233/sim-harbor/internal/config"
 )
 
 func TestCredentialFreeHostBoundaryAndAuthenticatedDomain(t *testing.T) {

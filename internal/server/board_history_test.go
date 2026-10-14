@@ -2,8 +2,8 @@ package server
 
 import (
 	"encoding/json"
-	"github.com/Battery233/sim/internal/diagnostics"
-	"github.com/Battery233/sim/internal/protocol"
+	"github.com/Battery233/sim-harbor/internal/diagnostics"
+	"github.com/Battery233/sim-harbor/internal/protocol"
 	"net/http/httptest"
 	"strings"
 	"testing"

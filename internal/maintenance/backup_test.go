@@ -12,8 +12,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Battery233/sim/internal/protocol"
-	"github.com/Battery233/sim/internal/store"
+	"github.com/Battery233/sim-harbor/internal/protocol"
+	"github.com/Battery233/sim-harbor/internal/store"
 )
 
 func fixture(t *testing.T) *store.Store {

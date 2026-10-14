@@ -5,7 +5,7 @@ RUN npm ci
 COPY web/ ./
 RUN npm test && npm run build
 
-FROM golang:1.26.8-alpine3.23 AS backend
+FROM golang:1.26.9-alpine3.23 AS backend
 ENV GOTOOLCHAIN=local
 WORKDIR /src
 COPY go.mod go.sum ./
@@ -18,6 +18,9 @@ RUN mkdir -m 0700 -p /out/rootfs/data && CGO_ENABLED=0 go build -trimpath -ldfla
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/sim-data ./cmd/maintain
 
 FROM scratch
+LABEL org.opencontainers.image.title="SIMHarbor" \
+      org.opencontainers.image.version="1.0.0" \
+      org.opencontainers.image.source="https://github.com/Battery233/sim-harbor"
 WORKDIR /app
 ENV TMPDIR=/data
 COPY --from=backend /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt

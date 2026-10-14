@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/Battery233/sim/internal/outbound"
+	"github.com/Battery233/sim-harbor/internal/outbound"
 	"modernc.org/sqlite"
 	"path/filepath"
 	"sync"

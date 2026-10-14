@@ -1,6 +1,6 @@
-module github.com/Battery233/sim
+module github.com/Battery233/sim-harbor
 
-go 1.26.8
+go 1.26.9
 
 require (
 	golang.org/x/sys v0.48.0

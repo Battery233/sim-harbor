@@ -7,8 +7,8 @@ import (
 	"time"
 	_ "time/tzdata"
 
-	"github.com/Battery233/sim/internal/config"
-	"github.com/Battery233/sim/internal/healthcheck"
+	"github.com/Battery233/sim-harbor/internal/config"
+	"github.com/Battery233/sim-harbor/internal/healthcheck"
 )
 
 func main() {

@@ -2,7 +2,7 @@ package server
 
 import (
 	"context"
-	"github.com/Battery233/sim/internal/store"
+	"github.com/Battery233/sim-harbor/internal/store"
 	"strconv"
 	"time"
 )

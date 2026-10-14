@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Battery233/sim/internal/protocol"
+	"github.com/Battery233/sim-harbor/internal/protocol"
 )
 
 func setNumberStatus(t *testing.T, s *Store, slot, identity, name string, value any, present bool) {

@@ -2,7 +2,7 @@ package store
 
 import (
 	"context"
-	"github.com/Battery233/sim/internal/protocol"
+	"github.com/Battery233/sim-harbor/internal/protocol"
 	"path/filepath"
 	"testing"
 	"time"

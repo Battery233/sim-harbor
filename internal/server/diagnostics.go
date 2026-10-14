@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/Battery233/sim/internal/diagnostics"
-	"github.com/Battery233/sim/internal/outbound"
+	"github.com/Battery233/sim-harbor/internal/diagnostics"
+	"github.com/Battery233/sim-harbor/internal/outbound"
 )
 
 func diagnosticFilter(r *http.Request) (diagnostics.Filter, bool) {

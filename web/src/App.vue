@@ -59,7 +59,12 @@ const errors = {
   notification_test_cooldown: '距离上次连接测试不足一分钟，请查看原结果。',
   push_request_failed: '连接测试未被确认接受，请查看诊断结果并核对 iPhone。',
   outbound_disabled: '外发尚未启用。完成真机与资费确认后再开启。',
-  outbound_restore_blocked: '恢复后的数据库已阻止外发，需先核对备份之后的发送历史。',
+  outbound_restore_blocked: '恢复保护尚未解除，请到数据维护完成迁移确认。',
+  migration_consent_required: '请逐项核对迁移条件并确认。',
+  migration_backup_required: '请先重新下载当前数据库备份，再于15分钟内预览。',
+  migration_state_changed: '迁移或发送历史已变化，请读取状态并重新备份、预览。',
+  migration_preview_expired: '预览已过期或失效，请读取状态后重新预览。',
+  migration_in_progress: '备份或迁移确认正在处理，请稍后读取状态。',
   invalid_sms: '请检查目标号码、卡槽与正文。',
   segment_limit: '正文超过当前允许的短信段数，请缩短后重新预览。',
   duplicate_content: '同一张卡、号码和正文已有操作，已阻止重复发送。',
@@ -355,12 +360,14 @@ onUnmounted(() => {
 <template>
   <div class="shell">
     <header class="topbar">
-      <a class="brand" href="/" aria-label="SIM 首页"
-        ><span class="mark">S</span><strong>SIM</strong><span class="subtitle">双卡管理</span></a
+      <a class="brand" href="/" aria-label="SIMHarbor 首页"
+        ><span class="mark">S</span><strong>SIMHarbor</strong
+        ><span class="subtitle">双卡管理</span></a
       >
       <div class="top-actions">
+        <span v-if="state?.version" class="tiny muted">v{{ state.version }}</span>
         <span class="env">{{
-          state ? (state.environment === 'cloud' ? '云端' : '本地联调') : '管理入口'
+          state ? (state.environment === 'cloud' ? '云端' : '本地') : '管理入口'
         }}</span
         ><button v-if="credential" class="quiet" @click="forget">退出访问</button>
       </div>
@@ -369,8 +376,8 @@ onUnmounted(() => {
       <div class="page-heading">
         <div>
           <p class="eyebrow">MY SIM BOARD</p>
-          <h1>两张卡，一个收件箱。</h1>
-          <p class="muted">查看家中板子的连接与短信记录。</p>
+          <h1>两张卡，一个管理台。</h1>
+          <p class="muted">集中管理短信、来电、卡状态与通知。</p>
         </div>
         <button @click="refresh(true)" :disabled="loading || locked">
           {{ loading ? '正在刷新…' : '刷新收件' }}
@@ -521,7 +528,13 @@ onUnmounted(() => {
           @view-inbox="viewCardInbox"
           @view-calls="viewCardCalls"
         />
-        <DataTools v-if="tab === 'data'" :file-request="fileRequest" :state="state" />
+        <DataTools
+          v-if="tab === 'data'"
+          :file-request="fileRequest"
+          :request="api"
+          :state="state"
+          @changed="refresh(false)"
+        />
         <Outbox
           v-if="tab === 'outbox' && state"
           :request="api"

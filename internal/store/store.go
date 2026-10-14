@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Battery233/sim/internal/protocol"
+	"github.com/Battery233/sim-harbor/internal/protocol"
 	"golang.org/x/sys/unix"
 	_ "modernc.org/sqlite"
 )
@@ -206,6 +206,12 @@ DELETE FROM schema_version; INSERT INTO schema_version VALUES(6);`); e != nil {
 			return e
 		}
 	}
+	if version.Int64 < 15 {
+		if e = migrateRecoveryConfirmation(tx); e != nil {
+			return e
+		}
+	}
+
 	if _, e = tx.Exec(`UPDATE calls SET state='unknown' WHERE ended=0`); e != nil {
 		return e
 	}

@@ -2,33 +2,39 @@ package store
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 )
 
-const SchemaVersion = 14
+const SchemaVersion = 15
 const recoverySchema = `CREATE TABLE IF NOT EXISTS recovery_guard(id INTEGER PRIMARY KEY CHECK(id=1),restored_at INTEGER NOT NULL,archive_sha256 TEXT NOT NULL);
 DELETE FROM schema_version; INSERT INTO schema_version VALUES(5);`
 
 func restoreBlocked(ctx context.Context, tx *sql.Tx) (bool, error) {
 	var n int
-	err := tx.QueryRowContext(ctx, `SELECT count(*) FROM recovery_guard`).Scan(&n)
+	err := tx.QueryRowContext(ctx, `SELECT count(*) FROM recovery_guard WHERE confirmed_at=0`).Scan(&n)
 	return n != 0, err
 }
 func (s *Store) RestoreBlocked(ctx context.Context) (bool, error) {
 	var n int
-	err := s.DB.QueryRowContext(ctx, `SELECT count(*) FROM recovery_guard`).Scan(&n)
+	err := s.DB.QueryRowContext(ctx, `SELECT count(*) FROM recovery_guard WHERE confirmed_at=0`).Scan(&n)
 	return n != 0, err
 }
 
-// Called only on a private validated copy. No API unlock exists: a restored
-// database can lack post-backup claims/limits, so simply toggling config is unsafe.
+// Called only on a private validated copy. Every restore creates a new identity
+// and revokes any earlier migration confirmation, including in restored backups.
 func (s *Store) HoldRestoredData(ctx context.Context, archive string, now int64) error {
+	identity := make([]byte, 16)
+	if _, e := rand.Read(identity); e != nil {
+		return e
+	}
 	tx, e := s.DB.BeginTx(ctx, nil)
 	if e != nil {
 		return e
 	}
 	defer tx.Rollback()
-	if _, e = tx.ExecContext(ctx, `INSERT INTO recovery_guard VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET restored_at=excluded.restored_at,archive_sha256=excluded.archive_sha256`, now, archive); e != nil {
+	if _, e = tx.ExecContext(ctx, `INSERT INTO recovery_guard(id,restored_at,archive_sha256,restore_id) VALUES(1,?,?,?) ON CONFLICT(id) DO UPDATE SET restored_at=excluded.restored_at,archive_sha256=excluded.archive_sha256,restore_id=excluded.restore_id,confirmed_at=0,confirmation_backup_sha256='',confirmation_policy=''`, now, archive, hex.EncodeToString(identity)); e != nil {
 		return e
 	}
 	if _, e = tx.ExecContext(ctx, `UPDATE outgoing SET state='canceled',error_code='restored_preview_canceled',expires_at=0,updated_at=? WHERE rank=0 AND state='prepared'; UPDATE outgoing SET state='unknown' WHERE rank BETWEEN 1 AND 3 AND state IN ('waiting_device','accepted','processed'); UPDATE notifications SET state='restore_held',last_error='restored_notification_held' WHERE state='pending';`, now); e != nil {

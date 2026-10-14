@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Battery233/sim/internal/config"
-	"github.com/Battery233/sim/internal/protocol"
-	"github.com/Battery233/sim/internal/store"
+	"github.com/Battery233/sim-harbor/internal/config"
+	"github.com/Battery233/sim-harbor/internal/protocol"
+	"github.com/Battery233/sim-harbor/internal/store"
 )
 
 func TestTCPIncomingCallRecordAndMissedBarkNoCallControl(t *testing.T) {

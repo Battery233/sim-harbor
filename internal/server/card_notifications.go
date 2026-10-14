@@ -3,7 +3,7 @@ package server
 import (
 	"database/sql"
 	"errors"
-	"github.com/Battery233/sim/internal/diagnostics"
+	"github.com/Battery233/sim-harbor/internal/diagnostics"
 	"net/http"
 )
 

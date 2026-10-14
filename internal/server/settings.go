@@ -3,8 +3,8 @@ package server
 import (
 	"encoding/json"
 	"errors"
-	"github.com/Battery233/sim/internal/config"
-	"github.com/Battery233/sim/internal/diagnostics"
+	"github.com/Battery233/sim-harbor/internal/config"
+	"github.com/Battery233/sim-harbor/internal/diagnostics"
 	"io"
 	"net"
 	"net/http"

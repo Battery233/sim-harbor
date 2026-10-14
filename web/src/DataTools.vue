@@ -1,9 +1,11 @@
 <script setup>
 import InfoTip from './InfoTip.vue'
+import MigrationRecovery from './MigrationRecovery.vue'
 import { ref, computed, onUnmounted } from 'vue'
 import { messageExportQuery, createDownloadFlow, saveFile } from './download.js'
 import { cardFilterOptions } from './inbox-cards.js'
-const props = defineProps({ fileRequest: Function, state: Object })
+const props = defineProps({ fileRequest: Function, request: Function, state: Object })
+const emit = defineEmits(['changed'])
 const card = ref(''),
   phone = ref(''),
   from = ref(''),
@@ -114,7 +116,7 @@ async function backup() {
         >
       </h2>
       <p v-if="state?.outbound_restore_blocked" class="notice">
-        当前数据库来自恢复，外发已被持久阻止。可查看历史、接收新短信和备份；不能只改配置解除。
+        当前数据库来自恢复，外发已被持久阻止。可查看历史、接收新短信和备份；请使用下方迁移确认流程解除。
       </p>
       <label class="consent"
         ><input
@@ -129,5 +131,6 @@ async function backup() {
         </button>
       </div>
     </section>
+    <MigrationRecovery v-if="request" :request="request" @changed="emit('changed')" />
   </div>
 </template>

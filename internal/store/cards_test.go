@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Battery233/sim/internal/outbound"
+	"github.com/Battery233/sim-harbor/internal/outbound"
 )
 
 func TestCardHistoryFollowsIdentityAcrossSlotsAndNames(t *testing.T) {

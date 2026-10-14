@@ -3,8 +3,8 @@ package maintenance
 import (
 	"context"
 	"encoding/json"
-	"github.com/Battery233/sim/internal/protocol"
-	"github.com/Battery233/sim/internal/store"
+	"github.com/Battery233/sim-harbor/internal/protocol"
+	"github.com/Battery233/sim-harbor/internal/store"
 	"path/filepath"
 	"testing"
 )

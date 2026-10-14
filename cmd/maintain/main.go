@@ -10,7 +10,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/Battery233/sim/internal/maintenance"
+	"github.com/Battery233/sim-harbor/internal/maintenance"
 )
 
 func main() {

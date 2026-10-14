@@ -194,7 +194,7 @@ onUnmounted(() => {
       </p>
       <p v-if="!state.outbound_enabled" class="notice">
         <template v-if="state.outbound_restore_blocked"
-          >恢复后的数据库已阻止外发。旧备份可能缺少之后的发送历史，不能仅修改配置重新开启。</template
+          >恢复后的数据库已阻止外发。请到“数据维护”核对完整发送历史、保存备份并完成迁移确认；不能仅修改配置重新开启。</template
         >
         <template v-else>外发默认关闭。确认实物兼容与资费后，再在服务配置中开启。</template>
       </p>

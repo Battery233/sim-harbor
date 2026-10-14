@@ -3,7 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"github.com/Battery233/sim/internal/config"
+	"github.com/Battery233/sim-harbor/internal/config"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"

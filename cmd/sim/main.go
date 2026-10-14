@@ -14,11 +14,11 @@ import (
 	"time"
 	_ "time/tzdata"
 
-	"github.com/Battery233/sim/internal/config"
-	"github.com/Battery233/sim/internal/diagnostics"
-	"github.com/Battery233/sim/internal/maintenance"
-	"github.com/Battery233/sim/internal/server"
-	"github.com/Battery233/sim/internal/store"
+	"github.com/Battery233/sim-harbor/internal/config"
+	"github.com/Battery233/sim-harbor/internal/diagnostics"
+	"github.com/Battery233/sim-harbor/internal/maintenance"
+	"github.com/Battery233/sim-harbor/internal/server"
+	"github.com/Battery233/sim-harbor/internal/store"
 )
 
 func main() {

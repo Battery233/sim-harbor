@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Battery233/sim/internal/config"
-	"github.com/Battery233/sim/internal/protocol"
+	"github.com/Battery233/sim-harbor/internal/config"
+	"github.com/Battery233/sim-harbor/internal/protocol"
 )
 
 func TestRestoredStoreBlocksEnabledConfigBeforeAnyBoardQuery(t *testing.T) {

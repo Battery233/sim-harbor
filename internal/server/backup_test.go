@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Battery233/sim/internal/config"
-	"github.com/Battery233/sim/internal/maintenance"
+	"github.com/Battery233/sim-harbor/internal/config"
+	"github.com/Battery233/sim-harbor/internal/maintenance"
 )
 
 func TestBackupRequiresConsentAuthAndCleansFiles(t *testing.T) {

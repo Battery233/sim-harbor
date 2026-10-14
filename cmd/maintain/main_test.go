@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Battery233/sim/internal/maintenance"
-	"github.com/Battery233/sim/internal/store"
+	"github.com/Battery233/sim-harbor/internal/maintenance"
+	"github.com/Battery233/sim-harbor/internal/store"
 )
 
 func TestMaintenanceInspectConfirmRestoreAndInvalidParameters(t *testing.T) {

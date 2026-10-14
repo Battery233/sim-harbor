@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"io"
 	"net/http"
@@ -9,8 +11,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/Battery233/sim/internal/maintenance"
-	"github.com/Battery233/sim/internal/store"
+	"github.com/Battery233/sim-harbor/internal/maintenance"
+	"github.com/Battery233/sim-harbor/internal/store"
 )
 
 func (s *Server) downloadBackup(w http.ResponseWriter, r *http.Request) {
@@ -29,6 +31,19 @@ func (s *Server) downloadBackup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer s.backupGate.Unlock()
+	if !s.migrationGate.TryLock() {
+		reply(w, 409, map[string]string{"error": "backup_in_progress"})
+		return
+	}
+	defer s.migrationGate.Unlock()
+	s.migrationBackup = nil
+	s.migrationPreview = nil
+	migration, e := s.Store.MigrationState(r.Context())
+	if e != nil {
+		reply(w, 503, map[string]string{"error": "backup_failed"})
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 	a, e := maintenance.Create(ctx, s.Store, s.Config.DataDir)
@@ -58,5 +73,10 @@ func (s *Server) downloadBackup(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store, no-transform")
 	w.Header().Set("Content-Disposition", `attachment; filename="sim-backup.zip"`)
 	w.Header().Set("Content-Length", strconv.FormatInt(info.Size(), 10))
-	io.Copy(w, file)
+	digest := sha256.New()
+	n, copyErr := io.Copy(w, io.TeeReader(file, digest))
+	after, afterErr := s.Store.MigrationState(r.Context())
+	if copyErr == nil && n == info.Size() && migration.Blocked && afterErr == nil && after.Revision == migration.Revision && after.LedgerRevision == migration.LedgerRevision {
+		s.migrationBackup = &migrationBackup{revision: migration.Revision, digest: hex.EncodeToString(digest.Sum(nil)), ledger: migration.LedgerRevision, created: time.Now()}
+	}
 }

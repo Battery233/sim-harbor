@@ -7,7 +7,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/Battery233/sim/internal/outbound"
+	"github.com/Battery233/sim-harbor/internal/outbound"
 )
 
 const outgoingSchema = `

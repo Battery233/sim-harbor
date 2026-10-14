@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Battery233/sim/internal/protocol"
+	"github.com/Battery233/sim-harbor/internal/protocol"
 )
 
 const callSchema = `CREATE TABLE calls(id INTEGER PRIMARY KEY,key TEXT UNIQUE NOT NULL,device_id TEXT NOT NULL,card_id TEXT REFERENCES cards(id),card_name TEXT NOT NULL DEFAULT '',slot INTEGER NOT NULL,phone TEXT NOT NULL,start_ts INTEGER NOT NULL,connected_ts INTEGER NOT NULL DEFAULT 0,end_ts INTEGER NOT NULL DEFAULT 0,ended INTEGER NOT NULL DEFAULT 0,connection_report INTEGER NOT NULL DEFAULT -1,conflict INTEGER NOT NULL DEFAULT 0,state TEXT NOT NULL,received_at INTEGER NOT NULL);

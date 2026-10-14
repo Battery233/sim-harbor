@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Battery233/sim/internal/protocol"
+	"github.com/Battery233/sim-harbor/internal/protocol"
 )
 
 func callEvent(kind protocol.Number, start int64) protocol.Event {

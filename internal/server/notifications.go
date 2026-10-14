@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Battery233/sim/internal/diagnostics"
-	"github.com/Battery233/sim/internal/store"
+	"github.com/Battery233/sim-harbor/internal/diagnostics"
+	"github.com/Battery233/sim-harbor/internal/store"
 )
 
 func (s *Server) pushNotification(ctx context.Context, n store.Notification) (bool, string) {

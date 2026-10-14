@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Battery233/sim/internal/protocol"
+	"github.com/Battery233/sim-harbor/internal/protocol"
 )
 
 func TestCallTimeoutDeadlineReplayAndLateFinalOnce(t *testing.T) {

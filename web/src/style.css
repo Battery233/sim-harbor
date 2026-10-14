@@ -486,6 +486,10 @@ dd {
   color: white;
   border-color: #2d4d35;
 }
+.primary:hover:enabled {
+  background: #23452e;
+}
+
 .modal-backdrop {
   position: fixed;
   inset: 0;
@@ -1133,7 +1137,8 @@ button.danger {
   }
 }
 
-.system-settings fieldset {
+.system-settings fieldset,
+.migration-recovery fieldset {
   border: 0;
   padding: 0;
   margin: 0;
