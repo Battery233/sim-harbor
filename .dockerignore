@@ -1,0 +1,26 @@
+# Default deny: private configs, databases, keys, logs, docs and .git never enter builds.
+**
+!Dockerfile
+!go.mod
+!go.sum
+!configs/
+configs/**
+!configs/*.example.json
+!cmd/
+cmd/**
+!cmd/sim/
+!cmd/sim/**
+!cmd/check/
+!cmd/check/**
+!cmd/maintain/
+!cmd/maintain/**
+!internal/
+!internal/**
+!web/
+web/**
+!web/package.json
+!web/package-lock.json
+!web/index.html
+!web/vite.config.js
+!web/src/
+!web/src/**

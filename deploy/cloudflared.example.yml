@@ -1,0 +1,13 @@
+# Host-side, locally managed Tunnel. Never commit actual credentials.
+tunnel: REPLACE_WITH_TUNNEL_UUID
+credentials-file: /etc/cloudflared/tunnel.private.json
+ingress:
+  - hostname: replace.invalid
+    service: http://127.0.0.1:8080
+    originRequest:
+      access:
+        required: true
+        teamName: REPLACE_WITH_TEAM_NAME
+        audTag:
+          - REPLACE_WITH_ACCESS_AUD
+  - service: http_status:404

@@ -1,0 +1,30 @@
+{
+  "environment": "local",
+  "http_address": "0.0.0.0:8080",
+  "tcp_address": "0.0.0.0:9000",
+  "data_directory": "data/lan",
+  "device_id": "REPLACE_WITH_BOARD_ID",
+  "device_cidrs": [
+    "192.168.1.0/24"
+  ],
+  "device_allowlist_enabled": true,
+  "aes_mode": 2,
+  "aes_key_env": "SIM_AES_KEY",
+  "aes_iv_env": "SIM_AES_IV",
+  "admin_token_env": "SIM_ADMIN_TOKEN",
+  "bark_key_env": "SIM_BARK_KEY",
+  "bark_base_url": "https://api.day.app",
+  "public_url": "http://192.168.1.100:8080",
+  "device_timezone": "Asia/Shanghai",
+  "stale_seconds": 345,
+  "static_directory": "web/dist",
+  "outbound_enabled": false,
+  "send_interval_seconds": 60,
+  "send_daily_limit": 5,
+  "send_max_segments": 1,
+  "log_level": "info",
+  "log_max_bytes": 16777216,
+  "log_backups": 3,
+  "diagnostics_limit": 5000,
+  "log_retention_days": 7
+}
