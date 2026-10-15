@@ -2,7 +2,7 @@
 
 本地与云端共用本页的初始化、构建和运行方法。先阅读所选的[本地部署](deployment-local.md)或[云端部署](deployment-cloud.md)，在首次启动前完成对应配置。
 
-以下使用 Compose、Python 3 和本机构建镜像，方便从源码开始部署。Linux 需要 Docker Engine 与 Compose 插件；macOS 可使用 Docker Desktop。安装方法见 [Docker 官方文档](https://docs.docker.com/get-started/get-docker/)，安装后先用 `docker version` 和 `docker compose version` 确认可用。安装目录可按自己的习惯选择。
+以下使用 Compose、Python 3 和本机构建镜像，方便从源码开始部署。Linux 需要 Docker Engine 与 Compose 插件；macOS 可使用 Docker Desktop。安装方法见 [Docker 官方文档](https://docs.docker.com/get-started/get-docker/)，安装后先用 `docker version` 和 `docker compose version` 确认可用。安装目录可按自己的习惯选择。使用局域网端口覆盖示例时，Compose 需为 2.24.4 或更新版本。
 
 ## 1. 获取源码
 
@@ -10,6 +10,8 @@
 git clone https://github.com/Battery233/sim-harbor.git
 cd sim-harbor
 ```
+
+HTTPS 拉取使用 GitHub 支持的访问凭据；也可在已配置 SSH 的主机使用 `git@github.com:Battery233/sim-harbor.git`。认证排障见[故障排查](troubleshooting.md#源码拉取与版本发布)。
 
 已有实例可保留当前配置，按[版本维护](releases.md)完成备份与更新。
 
@@ -29,7 +31,7 @@ values = {
     'SIM_AES_KEY': secrets.token_urlsafe(12),
     'SIM_AES_IV': secrets.token_urlsafe(12),
     'SIM_BARK_KEY': '',
-    'SIM_IMAGE': 'sim-harbor:1.0.0',
+    'SIM_IMAGE': 'sim-harbor:1.0.1',
     'SIM_HTTP_PORT': '18880',
     'SIM_DEVICE_BIND': '127.0.0.1',
     'SIM_DEVICE_PORT': '39090',
@@ -49,11 +51,11 @@ print('三个私有文件已创建，凭据未输出。')
 PY
 ```
 
-管理员 Token 为随机字符串；AES Key 和 IV 各 16 个 ASCII 字符。板子已有密钥时，可沿用并协调应用端配置。完成基础接入后，按需配置 Bark、短信外发和持续异常提醒。
+`deploy/.env.example` 可用于查看环境变量名称；上面的脚本会自动生成带随机凭据的文件。管理员 Token 为随机字符串；AES Key 和 IV 各 16 个 ASCII 字符。板子已有密钥时，可沿用并协调应用端配置。完成基础接入后，按需配置 Bark、短信外发和持续异常提醒。
 
 ## 3. 编辑与权限
 
-用本机编辑器修改 `.env` 与 JSON，占位设备编号和来源必须替换。具体值见[本地](deployment-local.md#配置网络)或[云端](deployment-cloud.md#配置应用与入口)说明。
+用本机编辑器修改 `.env` 与 JSON，占位设备编号和来源必须替换；设备 TCP 绑定也需按部署方式设为可达的局域网接口或云端接口。具体值见[本地](deployment-local.md#配置网络)或[云端](deployment-cloud.md#配置应用与入口)说明。
 
 宿主机端口与容器端口不同：本例宿主 HTTP 为 18880、设备 TCP 为 39090；容器内部保持 8080/9000。容器内的 `0.0.0.0` 是正常监听方式；是否发布到外部由宿主端口映射和防火墙决定。
 
@@ -81,6 +83,8 @@ docker compose --env-file .env -p sim -f compose.yaml -f deploy/site.private.yam
 
 启动后应看到应用健康、网页监听 `127.0.0.1:18880`，命名卷 `sim_sim-data` 挂载到容器 `/data`。新卷由镜像准备私有目录权限，已有卷保留原数据。登录首页查询板子状态，继续完成设备接入验收。
 
+这里的宿主端口来自生成的 `.env`。如已有其他端口配置，按自己的值核对。
+
 在运行主机打开 `http://127.0.0.1:18880`，使用 `.env` 中的管理员 Token 登录。远程服务器可先通过 SSH 转发：
 
 ```sh
@@ -89,7 +93,9 @@ ssh -N -L 18880:127.0.0.1:18880 your-user@your-server
 
 ## 5. 重启、停服与升级
 
-重启应用：
+网页保存配置后，可直接勾选“确认按已保存的配置重启应用”，点击“确认重启应用”。页面恢复后核对配置与板子连接即可。
+
+终端也可重启应用：
 
 ```sh
 docker compose --env-file .env -p sim -f compose.yaml -f deploy/site.private.yaml restart sim
@@ -101,7 +107,7 @@ docker compose --env-file .env -p sim -f compose.yaml -f deploy/site.private.yam
 docker compose --env-file .env -p sim -f compose.yaml -f deploy/site.private.yaml stop
 ```
 
-修改 `.env` 的端口映射或环境变量后，重新执行上面的 `up` 以应用新的容器配置。业务配置首次运行后由数据目录中的统一配置管理，见[配置说明](configuration.md)。
+网页重启适用于应用内配置；修改 `.env` 的端口映射、镜像或容器环境变量后，重新执行上面的 `up` 以应用新的容器配置。业务配置首次运行后由数据目录中的统一配置管理，见[配置说明](configuration.md)。
 
 升级前保存数据库备份、私有配置和旧镜像版本，再构建新镜像并执行 `up`；需要回退时核对镜像与备份的兼容性，步骤见[版本维护](releases.md)。
 

@@ -14,8 +14,8 @@
 | [Docker 安装](deployment-docker.md) | 共用初始化、构建、端口和生命周期 |
 | [Cloudflare 配置](cloudflare-setup.md) | HTTPS 域名、Tunnel、Access 和回源 |
 | [配置说明](configuration.md) | 文件、优先级、字段和生效方式 |
-| [数据维护](data-maintenance.md) | 导出、备份、检查、恢复与迁移 |
-| [版本维护](releases.md) | 发布、Docker 升级、验收与回退 |
+| [数据维护](data-maintenance.md) | 收件导出、完整数据库备份、检查、恢复与迁移 |
+| [版本维护](releases.md) | 标签、Release、镜像发布、Docker 更新与回退 |
 | [故障排查](troubleshooting.md) | 连接、通知、权限、日志和恢复提示 |
 
 ## 技术资料

@@ -33,7 +33,7 @@ Compose 默认在运行主机的 `127.0.0.1:18880` 提供网页。要让局域�
 ```yaml
 services:
   sim:
-    image: ${SIM_IMAGE:-sim-harbor:1.0.0}
+    image: ${SIM_IMAGE:-sim-harbor:1.0.1}
     ports: !override
       - "192.168.1.10:18880:8080"
       - "${SIM_DEVICE_BIND:-127.0.0.1}:${SIM_DEVICE_PORT:-39090}:9000"
@@ -47,7 +47,9 @@ HTTP 适合受信局域网内访问；需要加密或外出访问时，可配置
 
 ## 源码方式：macOS / Linux
 
-准备与 [go.mod](../go.mod) 一致的 Go 和兼容的 Node.js/npm。先按 Docker 安装页生成私有文件，只生成文件，不构建或启动容器。仍在项目根目录，将生成的 JSON 调整为：
+准备满足 [go.mod](../go.mod) 要求的 Go 工具链和兼容的 Node.js/npm；当前 Docker 构建基线为 Go 1.26.9、Node.js 26.7.0。文中的 `GOTOOLCHAIN=local` 使用本机已安装工具链，先用 `go version` 确认可用。
+
+按 Docker 安装页生成私有文件后，直接将 JSON 调整为下表值；接下来使用本节的源码构建与运行命令：
 
 | 字段 | 原生运行值 |
 | --- | --- |
@@ -69,7 +71,7 @@ set +a
 GOTOOLCHAIN=local go run ./cmd/sim -config configs/container.private.json
 ```
 
-正常停止使用 Ctrl+C。长期后台运行可配置系统服务，固定工作目录、环境变量和专用数据目录，由一个实例管理该库。源码运行的网络入口直接使用 JSON 中的监听地址。
+网页“系统配置”可保存参数并确认重启；终端前台运行仍可用 Ctrl+C 停止。长期后台运行可配置系统服务，固定工作目录、环境变量和专用数据目录，由一个实例管理该库。源码运行的网络入口直接使用 JSON 中的监听地址。
 
 ## 本地与云端迁移
 

@@ -27,5 +27,6 @@
   "log_max_bytes": 16777216,
   "log_backups": 3,
   "diagnostics_limit": 5000,
-  "log_retention_days": 7
+  "log_retention_days": 7,
+  "status_alerts_enabled": false
 }

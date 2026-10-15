@@ -3,7 +3,7 @@ tunnel: REPLACE_WITH_TUNNEL_UUID
 credentials-file: /etc/cloudflared/tunnel.private.json
 ingress:
   - hostname: replace.invalid
-    service: http://127.0.0.1:8080
+    service: http://127.0.0.1:18880
     originRequest:
       access:
         required: true

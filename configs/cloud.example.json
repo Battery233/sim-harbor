@@ -1,7 +1,7 @@
 {
   "environment": "cloud",
-  "http_address": "127.0.0.1:8080",
-  "tcp_address": "0.0.0.0:9000",
+  "http_address": "127.0.0.1:18880",
+  "tcp_address": "0.0.0.0:39090",
   "data_directory": "data/cloud",
   "device_id": "REPLACE_WITH_DEVICE_ID",
   "device_cidrs": [
@@ -26,5 +26,6 @@
   "log_max_bytes": 16777216,
   "log_backups": 3,
   "diagnostics_limit": 5000,
-  "log_retention_days": 7
+  "log_retention_days": 7,
+  "status_alerts_enabled": false
 }
