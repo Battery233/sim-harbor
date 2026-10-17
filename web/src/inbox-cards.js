@@ -44,5 +44,5 @@ export function messageSource(message, cards = []) {
   if (!message.card_id) return '来源未确认'
   const saved = cards?.find((card) => card.id === message.card_id)
   const name = typeof saved?.name === 'string' ? saved.name.trim() : ''
-  return name ? `${name} · 已保存名称` : '未记录收件时卡名'
+  return name ? `${name} · 自动识别` : '未记录收件时卡名'
 }

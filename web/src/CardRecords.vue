@@ -43,7 +43,7 @@ const records = computed(() => props.state?.cards || [])
     </ul>
     <p class="tiny muted">
       卡 ID 用于筛选短信与来电，不是 SIM 的原始 ICCID。历史记录保留当时的卡名；缺少时按卡 ID
-      显示已保存名称。
+      匹配已保存的卡名并标注“自动识别”，不会改写历史快照。
     </p>
   </section>
 </template>

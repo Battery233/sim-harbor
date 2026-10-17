@@ -69,7 +69,7 @@ test('缺少历史名称时只按固定卡ID补用保存名称，不改变快照
   ]
   const message = { card_id: a.id, card_name: '', slot: 1 }
   const before = structuredClone(message)
-  assert.equal(messageSource(message, cards), '卡A新名称 · 已保存名称')
+  assert.equal(messageSource(message, cards), '卡A新名称 · 自动识别')
   assert.deepEqual(message, before)
   assert.equal(messageSource({ ...message, card_name: '收件时旧名称' }, cards), '收件时旧名称')
   assert.equal(messageSource({ slot: 1 }, cards), '来源未确认')

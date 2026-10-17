@@ -28,9 +28,9 @@ ZIP 内含 `sim.db` 与 `manifest.json`；manifest 记录数据库摘要、版�
 
 ## 检查与恢复：源码工具
 
-包含长短信进度的维护版使用数据库 schema 16，新版工具可检查并恢复受支持的旧备份。升级前保存当前数据库 ZIP 和私有配置；schema 16 的库及备份不能交给原版 v1.0.1 使用。需要回退时保留当前最新数据，使用升级前兼容备份恢复到独立目录，不直接用旧程序打开已升级的库。
+v1.0.2 使用数据库 schema 16，新版工具可检查并恢复受支持的旧备份。升级前保存当前数据库 ZIP 和私有配置；schema 16 的库及备份不能交给原版 v1.0.1 使用。需要回退时保留当前最新数据，使用升级前兼容备份恢复到独立目录，不直接用旧程序打开已升级的库。
 
-原数据目录升级由新版应用首次启动时完成，已有迁移确认保留；`restore` 则建立新的恢复身份并重新启用外发保护，两种操作不同。备份与检查不会迁移原数据库，恢复会迁移所选副本。升级方式见[版本维护](releases.md#从-v101-升级到下一维护版)。
+原数据目录升级由新版应用首次启动时完成，已有迁移确认保留；`restore` 则建立新的恢复身份并重新启用外发保护，两种操作不同。备份与检查不会迁移原数据库，恢复会迁移所选副本。升级方式见[版本维护](releases.md#从-v101-升级到-v102)。
 
 在项目根目录使用与备份兼容的程序版本。先检查：
 
@@ -71,7 +71,7 @@ GOTOOLCHAIN=local go run ./cmd/maintain backup \
 docker run --rm --network none --read-only \
   --tmpfs /data:rw,uid=65532,gid=65532,mode=0700,size=640m \
   --mount type=bind,src=/srv/sim-backups,dst=/backup,readonly \
-  --entrypoint /app/sim-data sim-harbor:1.0.1 \
+  --entrypoint /app/sim-data sim-harbor:1.0.2 \
   inspect -backup /backup/sim-backup.zip
 ```
 
@@ -87,7 +87,7 @@ docker volume inspect sim_sim-data --format '{{.Name}}'
 docker run --rm --network none --read-only \
   --mount type=bind,src=/srv/sim-backups,dst=/backup,readonly \
   --mount type=volume,src=sim_sim-data,dst=/data \
-  --entrypoint /app/sim-data sim-harbor:1.0.1 \
+  --entrypoint /app/sim-data sim-harbor:1.0.2 \
   restore -backup /backup/sim-backup.zip \
   -to /data/restored-instance \
   -confirm-archive REPLACE_WITH_ARCHIVE_SHA256
@@ -97,7 +97,7 @@ docker run --rm --network none --read-only \
 
 ### 停服备份
 
-网页暂时不可用或正式迁移需要最终快照时，可以用源实例对应版本的镜像执行停服备份。下面以 `sim-harbor:1.0.1`、数据目录 `/data` 为例；如果实际目录为 `/data/storage`，调整 `-data-directory`。宿主 `/srv/sim-backups` 需允许容器 UID 65532 写入，输出文件使用尚不存在的新名称。
+网页暂时不可用或正式迁移需要最终快照时，可以用源实例对应版本的镜像执行停服备份。下面以 `sim-harbor:1.0.2`、数据目录 `/data` 为例；如果实际目录为 `/data/storage`，调整 `-data-directory`。宿主 `/srv/sim-backups` 需允许容器 UID 65532 写入，输出文件使用尚不存在的新名称。
 
 先沿用原项目名及完整 Compose 文件停止应用；这里展示基础安装参数：
 
@@ -112,7 +112,7 @@ docker compose --env-file .env -p sim \
 docker run --rm --network none --read-only \
   --mount type=volume,src=sim_sim-data,dst=/data \
   --mount type=bind,src=/srv/sim-backups,dst=/backup \
-  --entrypoint /app/sim-data sim-harbor:1.0.1 \
+  --entrypoint /app/sim-data sim-harbor:1.0.2 \
   backup -data-directory /data -output /backup/sim-backup-final.zip
 ```
 
