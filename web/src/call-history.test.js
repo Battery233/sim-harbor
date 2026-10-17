@@ -184,7 +184,7 @@ test('旧通知归入同卡同号码，匿名与不同卡不混入', async () =>
 test('超时兜底与已确认未接的通知文案区分，结束后仍展示原提醒种类', () => {
   assert.equal(
     callPushLabel({ notification_state: 'sent', notification_kind: 'timeout' }),
-    'Bark 已接受 · 兜底提醒',
+    '推送成功 · 兜底提醒',
   )
   assert.equal(
     callPushLabel({

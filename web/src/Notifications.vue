@@ -136,7 +136,7 @@ onUnmounted(() => {
       <div class="notification-summary">
         <span>待推送 {{ data?.summary.pending || 0 }}</span
         ><span>失败待重试 {{ data?.summary.retrying || 0 }}</span
-        ><span>Bark 已接受 {{ data?.summary.accepted || 0 }}</span>
+        ><span>推送成功 {{ data?.summary.accepted || 0 }}</span>
       </div>
       <div class="notification-test">
         <p class="tiny">
@@ -162,7 +162,7 @@ onUnmounted(() => {
       <label class="notification-filter"
         >查看<select v-model="filter" :disabled="busy" @change="refresh(false)">
           <option value="pending">待推送</option>
-          <option value="sent">Bark 已接受</option>
+          <option value="sent">推送成功</option>
           <option value="restore_held">恢复后暂停</option>
           <option value="canceled">短信删除后取消</option>
           <option value="all">全部记录</option>
@@ -179,21 +179,22 @@ onUnmounted(() => {
                 : row.state === 'restore_held'
                   ? '恢复后暂停'
                   : row.state === 'sent'
-                    ? 'Bark 已接受'
+                    ? '推送成功'
                     : row.failures
                       ? '失败待重试'
                       : '等待推送'
             }}</span>
           </div>
-          <p class="tiny muted">
-            失败 {{ row.failures }} 次 ·
+          <p v-if="row.state !== 'sent' || row.failures" class="tiny muted">
+            <template v-if="row.failures">此前失败 {{ row.failures }} 次</template>
+            <template v-if="row.failures && row.state !== 'sent'"> · </template>
             {{
               row.state === 'canceled'
                 ? '原短信已删除，不再推送'
                 : row.state === 'restore_held'
                   ? '旧任务不自动重推；原短信仍保留'
                   : row.state === 'sent'
-                    ? '手机收到情况待核对'
+                    ? ''
                     : reason(row.last_error)
             }}<br /><template v-if="row.state === 'pending'">{{
               row.next_at > now ? '下次尝试 ' + date(row.next_at) : '已进入可尝试队列'

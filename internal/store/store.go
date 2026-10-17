@@ -21,15 +21,19 @@ import (
 
 type Store struct{ DB *sql.DB }
 type Message struct {
-	CardID    string `json:"card_id"`
-	CardName  string `json:"card_name"`
-	ID        int64  `json:"id"`
-	Slot      int    `json:"slot"`
-	Phone     string `json:"phone"`
-	Body      string `json:"body"`
-	Timestamp int64  `json:"timestamp"`
-	Complete  bool   `json:"complete"`
-	Read      bool   `json:"read"`
+	Multipart     bool   `json:"multipart"`
+	PartsTotal    int    `json:"parts_total"`
+	PartsReceived int    `json:"parts_received"`
+	PartIndices   []int  `json:"part_indices"`
+	CardID        string `json:"card_id"`
+	CardName      string `json:"card_name"`
+	ID            int64  `json:"id"`
+	Slot          int    `json:"slot"`
+	Phone         string `json:"phone"`
+	Body          string `json:"body"`
+	Timestamp     int64  `json:"timestamp"`
+	Complete      bool   `json:"complete"`
+	Read          bool   `json:"read"`
 }
 type Notification struct {
 	AlertID     int64
@@ -211,6 +215,11 @@ DELETE FROM schema_version; INSERT INTO schema_version VALUES(6);`); e != nil {
 			return e
 		}
 	}
+	if version.Int64 < 16 {
+		if e = migrateMultipart(tx); e != nil {
+			return e
+		}
+	}
 
 	if _, e = tx.Exec(`UPDATE calls SET state='unknown' WHERE ended=0`); e != nil {
 		return e
@@ -266,6 +275,9 @@ func (s *Store) Ingest(ctx context.Context, e protocol.Event, raw []byte, notify
 }
 
 func ingestSMS(ctx context.Context, tx *sql.Tx, e protocol.Event, notify bool) error {
+	if e.Group != "" && (e.Max < 1 || e.Max > 255) {
+		return ErrSMSFragmentInvalid
+	}
 	iccid := cardIdentity(e.ICCID)
 	cardID, err := ensureCard(ctx, tx, iccid, e.CardName, false)
 	if err != nil {
@@ -309,16 +321,30 @@ func ingestSMS(ctx context.Context, tx *sql.Tx, e protocol.Event, notify bool) e
 	var storedBody, storedParts string
 	var storedComplete bool
 	var deletedAt int64
-	err = tx.QueryRowContext(ctx, `SELECT id,body,complete,fragments,deleted_at FROM messages WHERE key=?`, key).Scan(&id, &storedBody, &storedComplete, &storedParts, &deletedAt)
+	var total int
+	var group string
+	err = tx.QueryRowContext(ctx, `SELECT id,body,complete,fragments,deleted_at,sms_total,sms_group_ref FROM messages WHERE key=?`, key).Scan(&id, &storedBody, &storedComplete, &storedParts, &deletedAt, &total, &group)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
 	if deletedAt != 0 {
 		return nil
 	}
+	if e.Group != "" {
+		if total > 0 && total != int(e.Max) {
+			return ErrSMSTotalMismatch
+		}
+		total, group = int(e.Max), SMSGroupReference(e)
+	}
 	if storedParts != "" {
 		if err = json.Unmarshal([]byte(storedParts), &parts); err != nil {
 			return err
+		}
+	}
+	for key := range parts {
+		n, parseErr := strconv.Atoi(key)
+		if parseErr != nil || n < 1 || n > 255 || (total > 0 && n > total) {
+			return ErrSMSTotalMismatch
 		}
 	}
 	if storedComplete {
@@ -329,11 +355,11 @@ func ingestSMS(ctx context.Context, tx *sql.Tx, e protocol.Event, notify bool) e
 			a, b, ok := strings.Cut(fragment, ",")
 			n, err := strconv.Atoi(a)
 			if !ok || err != nil || n < 1 || n > int(e.Max) {
-				return errors.New("invalid SMS fragment")
+				return ErrSMSFragmentInvalid
 			}
 			a = strconv.Itoa(n)
 			if old, ok := parts[a]; ok && old != b {
-				return errors.New("conflicting SMS fragment")
+				return ErrSMSFragmentConflict
 			}
 			parts[a] = b
 		}
@@ -363,7 +389,7 @@ func ingestSMS(ctx context.Context, tx *sql.Tx, e protocol.Event, notify bool) e
 	p, _ := json.Marshal(parts)
 	// The first receipt owns the name snapshot, including an unknown name.
 	// Replays/fragments must not relabel an old message after a SIM swap.
-	_, err = tx.ExecContext(ctx, `INSERT INTO messages(key,slot,phone,body,sms_ts,complete,fragments,card_name,card_id,device_id) VALUES(?,?,?,?,?,?,?,?,nullif(?,''),?) ON CONFLICT(key) DO UPDATE SET body=excluded.body,complete=excluded.complete,fragments=excluded.fragments,card_id=coalesce(messages.card_id,excluded.card_id)`, key, int(e.Slot), e.Phone, body, int64(e.SMSTS), complete, string(p), cleanCardName(e.CardName), cardID, e.DeviceID)
+	_, err = tx.ExecContext(ctx, `INSERT INTO messages(key,slot,phone,body,sms_ts,complete,fragments,card_name,card_id,device_id,sms_total,sms_group_ref) VALUES(?,?,?,?,?,?,?,?,nullif(?,''),?,?,?) ON CONFLICT(key) DO UPDATE SET body=excluded.body,complete=excluded.complete,fragments=excluded.fragments,card_id=coalesce(messages.card_id,excluded.card_id),sms_total=excluded.sms_total,sms_group_ref=excluded.sms_group_ref`, key, int(e.Slot), e.Phone, body, int64(e.SMSTS), complete, string(p), cleanCardName(e.CardName), cardID, e.DeviceID, total, group)
 	if err != nil {
 		return err
 	}

@@ -39,6 +39,10 @@ export function cardFilterOptions(state, now = Date.now() / 1000) {
     { value: 'unknown', label: '来源未确认（历史或缺少身份）' },
   ]
 }
-export function messageSource(message) {
-  return message.card_name || (message.card_id ? '未记录收件时卡名' : '来源未确认')
+export function messageSource(message, cards = []) {
+  if (message.card_name) return message.card_name
+  if (!message.card_id) return '来源未确认'
+  const saved = cards?.find((card) => card.id === message.card_id)
+  const name = typeof saved?.name === 'string' ? saved.name.trim() : ''
+  return name ? `${name} · 已保存名称` : '未记录收件时卡名'
 }

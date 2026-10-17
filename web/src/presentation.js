@@ -1,3 +1,5 @@
+import { cardLocationsFresh, cardNumber } from './inbox-cards.js'
+
 // Common PLMNs from the locally downloaded vendor v150 stat reference.
 const networkNames = {
   46000: '中国移动',
@@ -42,9 +44,19 @@ export function slotView(state, slot, now = Date.now() / 1000) {
   const previous = names[raw] || (raw ? `状态 ${raw}` : '未知')
   const plmn = text(info[`sim${slot}_plmn`])
   const imsi = text(info[`sim${slot}_imsi`])
+  // current_slot is assigned by the server only after an exact SIM identity
+  // match. Never borrow a saved label just because a SIM used this slot before.
+  const matches = (state?.cards || []).filter((card) => card.current_slot === slot)
+  const saved =
+    raw === 'OK' && cardLocationsFresh(state, now) && matches.length === 1 ? matches[0] : null
+  const reportedName = text(info[`sim${slot}_scName`])
+  const reportedNumber = text(info[`sim${slot}_msIsdn`])
+  const savedName = !reportedName ? text(saved?.name) : ''
+  const savedNumber = !reportedNumber ? cardNumber(saved) : ''
   return {
-    name: text(info[`sim${slot}_scName`]) || `卡槽 ${slot}`,
-    number: raw === 'OK' ? text(info[`sim${slot}_msIsdn`]) : '',
+    name: reportedName || savedName || `卡槽 ${slot}`,
+    number: raw === 'OK' ? reportedNumber || savedNumber : '',
+    savedFields: [...(savedName ? ['名称'] : []), ...(savedNumber ? ['号码'] : [])],
     label: !at
       ? '尚未查询'
       : !state?.online

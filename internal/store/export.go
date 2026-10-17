@@ -47,7 +47,7 @@ func (s *Store) ExportMessages(ctx context.Context, f MessageFilter) ([]Message,
 			err = e
 			return nil, err
 		}
-		size += len(m.Body) + len(m.Phone) + len(m.CardName) + 192
+		size += len(m.Body) + len(m.Phone) + len(m.CardName) + 256 + 6*len(m.PartIndices)
 		if len(items) >= ExportLimit || size > ExportBytes {
 			return nil, ErrExportLimit
 		}

@@ -7,7 +7,7 @@ import (
 	"encoding/hex"
 )
 
-const SchemaVersion = 15
+const SchemaVersion = 16
 const recoverySchema = `CREATE TABLE IF NOT EXISTS recovery_guard(id INTEGER PRIMARY KEY CHECK(id=1),restored_at INTEGER NOT NULL,archive_sha256 TEXT NOT NULL);
 DELETE FROM schema_version; INSERT INTO schema_version VALUES(5);`
 

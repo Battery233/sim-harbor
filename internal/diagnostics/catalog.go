@@ -9,6 +9,9 @@ type Definition struct {
 }
 
 var catalog = map[string]Definition{
+	"sms_fragment_received":           {"info", "sms", "收到长短信分片元数据，尚未确认入库"},
+	"sms_fragment_stored":             {"info", "sms", "长短信上报已完成入库事务"},
+	"sms_fragment_rejected":           {"warn", "sms", "长短信上报未能入库，原有记录保留"},
 	"board_parameter_command":         {"info", "query", "板子参数命令已尝试下发"},
 	"board_parameter_verified":        {"info", "query", "板子参数修改已读回确认"},
 	"status_alert_observation_failed": {"warn", "notification", "持续异常观察暂时失败"},
@@ -69,6 +72,8 @@ var outcomes = map[string]bool{
 	"device_query_failed": true, "device_result_unknown": true, "request_canceled": true,
 	"transport_failed": true, "http_rejected": true, "invalid_response": true,
 	"bark_rejected": true, "accepted": true,
+	"stored": true, "store_failed": true, "total_mismatch": true,
+	"invalid_fragment": true, "conflicting_fragment": true,
 }
 
 func Catalog() map[string]Definition {

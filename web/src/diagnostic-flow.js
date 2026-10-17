@@ -2,10 +2,15 @@ export const diagnosticCategories = {
   service: '应用运行',
   tcp: '板子连接',
   query: '命令与查询',
-  sms: '短信发送',
+  sms: '短信收发',
   notification: '通知推送',
 }
 export const diagnosticOutcomes = {
+  stored: '入库事务已完成',
+  store_failed: '入库事务失败',
+  total_mismatch: '总片数与已保存记录不一致，已拒绝更新',
+  invalid_fragment: '分片元数据无效，已拒绝更新',
+  conflicting_fragment: '相同序号的分片内容冲突，已拒绝更新',
   reported_success: '板子报告本阶段成功',
   reported_failure: '板子报告本阶段失败',
   device_offline: '板子未连接',
@@ -18,7 +23,7 @@ export const diagnosticOutcomes = {
   http_rejected: '推送服务拒绝请求',
   invalid_response: '推送服务返回内容无效',
   bark_rejected: 'Bark 未接受请求',
-  accepted: 'Bark 已接受，手机到达待核对',
+  accepted: '推送成功（Bark 已接受）',
 }
 export function diagnosticQuery({ level = '', category = '', reference = '' } = {}, before = 0) {
   const value = reference.trim().toLowerCase()

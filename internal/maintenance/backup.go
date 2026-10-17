@@ -221,6 +221,13 @@ func databaseInfo(ctx context.Context, path string) (Manifest, error) {
 		m.Counts[name] = n
 	}
 	// Check columns consumed by the runtime before the restore tool can migrate.
+	if m.Schema >= 16 {
+		r, err := db.QueryContext(ctx, `SELECT sms_total,sms_group_ref FROM messages LIMIT 0`)
+		if err != nil {
+			return m, ErrInvalidBackup
+		}
+		r.Close()
+	}
 	for _, q := range []string{`SELECT id,slot,phone,body,sms_ts,complete,is_read,fragments,key FROM messages LIMIT 0`, `SELECT id,device_id,tid,fingerprint,slot,phone,body,segments,iccid,created_at,updated_at,expires_at,dispatched_at,deadline_at,state,rank,error_code FROM outgoing LIMIT 0`, `SELECT id,message_id,state,attempts,next_at,last_error,manual_retry_at FROM notifications LIMIT 0`, `SELECT id,last_seen,status,status_received_at FROM device LIMIT 0`, `SELECT id,requested_at,outcome FROM notification_test LIMIT 0`, `SELECT operation_id,mr FROM outgoing_refs LIMIT 0`, `SELECT hash,type,received_at FROM events LIMIT 0`, `SELECT id,event_hash,device_id,slot,phone,iccid,mr,status,scts,report_ts,matched_operation,match_state FROM delivery_receipts LIMIT 0`} {
 		r, e := db.QueryContext(ctx, q)
 		if e != nil {

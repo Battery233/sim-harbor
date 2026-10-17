@@ -10,21 +10,31 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
 
 type Fields struct {
-	Session     string `json:"session,omitempty"`
-	Operation   string `json:"operation,omitempty"`
-	Transaction string `json:"transaction,omitempty"`
-	Type        int    `json:"event_type,omitempty"`
-	SubType     int    `json:"sub_type,omitempty"`
-	Slot        int    `json:"slot,omitempty"`
-	DurationMS  int64  `json:"duration_ms,omitempty"`
-	Count       int    `json:"count,omitempty"`
-	Outcome     string `json:"outcome,omitempty"`
+	SMSGroup          string `json:"sms_group,omitempty"`
+	SMSTotal          int    `json:"sms_total,omitempty"`
+	SMSParts          string `json:"sms_parts,omitempty"`
+	SMSInvalidParts   int    `json:"sms_invalid_parts,omitempty"`
+	SMSComplete       *bool  `json:"sms_complete,omitempty"`
+	SMSStoredComplete *bool  `json:"sms_stored_complete,omitempty"`
+	SMSTime           int64  `json:"sms_time,omitempty"`
+	MessageID         int64  `json:"message_id,omitempty"`
+	Session           string `json:"session,omitempty"`
+	Operation         string `json:"operation,omitempty"`
+	Transaction       string `json:"transaction,omitempty"`
+	Type              int    `json:"event_type,omitempty"`
+	SubType           int    `json:"sub_type,omitempty"`
+	Slot              int    `json:"slot,omitempty"`
+	DurationMS        int64  `json:"duration_ms,omitempty"`
+	Count             int    `json:"count,omitempty"`
+	Outcome           string `json:"outcome,omitempty"`
 }
 type Event struct {
 	ID   int64  `json:"id"`
@@ -81,6 +91,30 @@ func validReference(v string) bool {
 	return true
 }
 func clean(f Fields) Fields {
+	if !validReference(f.SMSGroup) {
+		f.SMSGroup = ""
+	}
+	if f.SMSTotal < 0 || f.SMSTotal > 255 {
+		f.SMSTotal = 0
+	}
+	if f.SMSTime < 1 || f.SMSTime > 9999999999 {
+		f.SMSTime = 0
+	}
+	if f.MessageID < 0 {
+		f.MessageID = 0
+	}
+	if f.SMSInvalidParts < 0 || f.SMSInvalidParts > 65536 {
+		f.SMSInvalidParts = 0
+	}
+	f.SMSParts = cleanPartNumbers(f.SMSParts)
+	if f.SMSComplete != nil {
+		value := *f.SMSComplete
+		f.SMSComplete = &value
+	}
+	if f.SMSStoredComplete != nil {
+		value := *f.SMSStoredComplete
+		f.SMSStoredComplete = &value
+	}
 	if !validReference(f.Session) {
 		f.Session = ""
 	}
@@ -109,6 +143,30 @@ func clean(f Fields) Fields {
 		f.Outcome = ""
 	}
 	return f
+}
+
+func cleanPartNumbers(value string) string {
+	if value == "" || len(value) > 1024 {
+		return ""
+	}
+	seen := map[int]bool{}
+	for _, part := range strings.Split(value, ",") {
+		n, err := strconv.Atoi(part)
+		if err != nil || n < 1 || n > 255 {
+			return ""
+		}
+		seen[n] = true
+	}
+	parts := make([]int, 0, len(seen))
+	for n := range seen {
+		parts = append(parts, n)
+	}
+	sort.Ints(parts)
+	out := make([]string, 0, len(parts))
+	for _, n := range parts {
+		out = append(out, strconv.Itoa(n))
+	}
+	return strings.Join(out, ",")
 }
 func priority(level string) int {
 	switch level {
@@ -278,8 +336,16 @@ func (r *Recorder) Snapshot(filter Filter, limit int) ([]Event, Status) {
 		if filter.Before > 0 && e.ID >= filter.Before || filter.Level != "" && e.Level != filter.Level || filter.Category != "" && e.Category != filter.Category {
 			continue
 		}
-		if filter.Reference != "" && filter.Reference != e.Session && filter.Reference != e.Transaction && filter.Reference != e.Operation {
+		if filter.Reference != "" && filter.Reference != e.Session && filter.Reference != e.Transaction && filter.Reference != e.Operation && filter.Reference != e.SMSGroup {
 			continue
+		}
+		if e.SMSComplete != nil {
+			value := *e.SMSComplete
+			e.SMSComplete = &value
+		}
+		if e.SMSStoredComplete != nil {
+			value := *e.SMSStoredComplete
+			e.SMSStoredComplete = &value
 		}
 		rows = append(rows, e)
 	}

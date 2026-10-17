@@ -221,7 +221,7 @@ onUnmounted(() => {
             }}</span>
           </div>
           <p class="tiny muted">
-            {{ messageSource(group.latest) }} · 最近
+            {{ messageSource(group.latest, state?.cards) }} · 最近
             {{ date(group.latest.started_at || group.latest.received_at) }}
           </p>
           <div class="call-summary-bottom">
@@ -246,6 +246,7 @@ onUnmounted(() => {
             v-for="call in entries(group)"
             :key="call.id"
             :call="call"
+            :cards="state?.cards"
             :highlighted="linked?.id === call.id"
           />
           <div v-if="expanded[group.id].next" class="load-more">

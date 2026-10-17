@@ -163,6 +163,23 @@ onUnmounted(() => flow.dispose())
             <div v-for="record in row.records" :key="record.id" class="diagnostic-record">
               <p class="tiny muted">{{ date(record.time_ms) }} · {{ names[record.level] }}</p>
               <p>{{ record.message }}</p>
+              <p v-if="record.event_type === 501 && record.sms_time" class="tiny muted">
+                短信时间 · {{ date(record.sms_time * 1000) }}
+              </p>
+              <p v-if="record.event_type === 501" class="tiny muted">
+                总片数 {{ record.sms_total || '未知' }} · 本次分片
+                {{ record.sms_parts || '未提供' }}
+                <template v-if="typeof record.sms_complete === 'boolean'">
+                  · 板子报告{{ record.sms_complete ? '已收齐' : '未收齐' }}
+                </template>
+                <template v-if="typeof record.sms_stored_complete === 'boolean'">
+                  · 入库后{{ record.sms_stored_complete ? '已收齐' : '未收齐' }}
+                </template>
+                <template v-if="record.sms_invalid_parts">
+                  · 无效分片项 {{ record.sms_invalid_parts }}</template
+                >
+                <template v-if="record.message_id"> · 短信记录 #{{ record.message_id }}</template>
+              </p>
               <p v-if="record.outcome" class="tiny muted">
                 {{ diagnosticOutcomes[record.outcome] || '结果类别待核对' }}
               </p>
@@ -178,7 +195,7 @@ onUnmounted(() => flow.dispose())
                 >
               </p>
               <dl
-                v-if="record.session || record.operation || record.transaction"
+                v-if="record.session || record.operation || record.transaction || record.sms_group"
                 class="diagnostic-refs"
               >
                 <div v-if="record.session">
@@ -192,6 +209,10 @@ onUnmounted(() => flow.dispose())
                 <div v-if="record.transaction">
                   <dt>事务摘要</dt>
                   <dd>{{ record.transaction }}</dd>
+                </div>
+                <div v-if="record.sms_group">
+                  <dt>匿名短信组</dt>
+                  <dd>{{ record.sms_group }}</dd>
                 </div>
               </dl>
             </div>

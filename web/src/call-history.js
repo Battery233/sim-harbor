@@ -26,7 +26,7 @@ export function callPushLabel(call) {
   const fallback = call?.notification_kind === 'timeout' ? ' · 兜底提醒' : ''
   return (
     ({
-      sent: 'Bark 已接受',
+      sent: '推送成功',
       pending: call?.notification_failures ? '等待重试' : '等待推送',
       restore_held: '恢复后待核对',
       canceled: '提醒已取消 · 来电待核对',

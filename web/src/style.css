@@ -411,6 +411,7 @@ dd {
 }
 .message-title {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   align-items: center;
 }
@@ -1021,6 +1022,10 @@ button.danger {
 }
 .card-record-list .sim-number {
   margin: 0 0 12px;
+}
+.card-record-id code {
+  overflow-wrap: anywhere;
+  user-select: all;
 }
 .card-record-actions {
   display: flex;

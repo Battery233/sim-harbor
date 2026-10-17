@@ -2,6 +2,9 @@ import { diagnosticOutcomes } from './diagnostic-flow.js'
 
 const queryCodes = new Set(['query_started', 'query_completed', 'query_failed'])
 const titles = {
+  sms_fragment_received: '收到长短信上报，正在保存',
+  sms_fragment_stored: '长短信上报已处理',
+  sms_fragment_rejected: '长短信上报未能保存',
   service_started: '管理应用已启动',
   service_stopped: '管理应用已停止',
   configuration_rejected: '应用配置有误',
@@ -102,6 +105,9 @@ function describe(row) {
     return { title: '板子返回了命令回执', explanation: '尚不能确认这条命令的最终结果。' }
   }
   const explanations = {
+    sms_fragment_received: '这条记录只表示收到上报，保存结果请看后续记录。',
+    sms_fragment_stored: '分片是否收齐请查看收件箱中的组装进度。',
+    sms_fragment_rejected: diagnosticOutcomes[row.outcome] || '已有分片仍保留，请查看技术详情。',
     tcp_decode_failed: '请核对板子与应用的加密模式、密钥和消息格式。',
     tcp_bound: '这表示历史连接事件，当前是否在线请看首页。',
     sms_dispatch_claimed: '操作已保存，应用不会自动重复下发。',

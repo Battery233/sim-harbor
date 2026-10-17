@@ -17,7 +17,7 @@ func setNumberStatus(t *testing.T, s *Store, slot, identity, name string, value 
 	ingest(t, s, protocol.Event{DeviceID: "SIM-TEST", Type: 402, SubType: 46, Code: number(0), SlotInfo: info})
 }
 
-func TestCardNumberFollowsIdentityAndExplicitBlankClears(t *testing.T) {
+func TestCardNumberFollowsIdentityAndEmptyReportsPreserve(t *testing.T) {
 	s := open(t, filepath.Join(t.TempDir(), "sim.db"))
 	ctx := context.Background()
 	setNumberStatus(t, s, "1", "SYNTHETIC-A", "First", " +TEST-NUMBER ", true)
@@ -60,10 +60,12 @@ func TestCardNumberFollowsIdentityAndExplicitBlankClears(t *testing.T) {
 	if cards[0].MessageCount != 0 || cards[0].Number != "UPDATED-NUMBER" {
 		t.Fatal("deletion lost card or visible count wrong")
 	}
-	setNumberStatus(t, s, "2", "SYNTHETIC-A", "Renamed", "", true)
-	cards, _ = s.Cards(ctx, nil, false)
-	if cards[0].Number != "" {
-		t.Fatal("explicit clear ignored")
+	for _, empty := range []string{"", " \n\t "} {
+		setNumberStatus(t, s, "2", "SYNTHETIC-A", "", empty, true)
+		cards, _ = s.Cards(ctx, nil, false)
+		if cards[0].Number != "UPDATED-NUMBER" || cards[0].Name != "Renamed" {
+			t.Fatal("empty report erased saved identity details")
+		}
 	}
 }
 
@@ -92,5 +94,47 @@ func TestSameNumberCardsRemainSeparateAndVersionNineMigratesUnknown(t *testing.T
 	cards, _ = s.Cards(ctx, nil, false)
 	if cards[0].Number != "FRESH-NUMBER" || cards[1].Number != "" {
 		t.Fatal("number applied to wrong historical SIM")
+	}
+}
+
+func TestSavedCardMetadataLifecycle(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sim.db")
+	s := open(t, path)
+	ctx := context.Background()
+	setNumberStatus(t, s, "1", "SYNTHETIC-A", "Original", "ORIGINAL-NUMBER", true)
+	cards, err := s.Cards(ctx, nil, false)
+	if err != nil || len(cards) != 1 {
+		t.Fatal("initial card unavailable", err)
+	}
+	id := cards[0].ID
+	e := sms()
+	e.ICCID = "SYNTHETIC-A"
+	e.CardName = ""
+	ingest(t, s, e)
+	// Each field updates independently; an omitted number or empty name does
+	// not erase the other field. This remains the same SIM after moving slots.
+	setNumberStatus(t, s, "1", "SYNTHETIC-A", "Updated", nil, false)
+	cards, err = s.Cards(ctx, nil, false)
+	if err != nil || len(cards) != 1 || cards[0].ID != id || cards[0].Name != "Updated" || cards[0].Number != "ORIGINAL-NUMBER" {
+		t.Fatal("name-only update changed identity or erased number", err)
+	}
+	setNumberStatus(t, s, "1", "SYNTHETIC-A", "", "UPDATED-NUMBER", true)
+	// A delayed business report with an old name must not roll the registry
+	// back; the next current status remains authoritative for metadata updates.
+	e.CardName = "Original"
+	ingest(t, s, e)
+	ingest(t, s, protocol.Event{DeviceID: "SIM-TEST", Type: 402, SubType: 46, Code: number(0), SlotInfo: map[string]any{"slot1_sta": "NOSIM"}})
+	setNumberStatus(t, s, "2", "SYNTHETIC-A", "", "", true)
+	if err = s.DB.Close(); err != nil {
+		t.Fatal(err)
+	}
+	s = open(t, path)
+	cards, err = s.Cards(ctx, nil, false)
+	if err != nil || len(cards) != 1 || cards[0].ID != id || cards[0].Name != "Updated" || cards[0].Number != "UPDATED-NUMBER" {
+		t.Fatal("removal/reinsertion/restart lost saved metadata", err)
+	}
+	rows, err := s.CardMessagePage(ctx, id, 0, "", 0, 10)
+	if err != nil || len(rows) != 1 || rows[0].CardName != "" {
+		t.Fatal("registry updates changed filtering or filled a historical snapshot", err)
 	}
 }

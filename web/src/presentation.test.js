@@ -79,6 +79,48 @@ test('主页显示保存号码原文，不补国家码；未插卡不显示旧�
   assert.equal(slotView(s, 1, 200).number, '')
 })
 
+test('当前身份确认后补用保存资料，实时字段优先且注册网络独立', () => {
+  const s = networkState({ sim1_plmn: '46001' })
+  s.card_locations_verified = true
+  s.cards = [{ id: 'card-a', name: '保存的卡名', number: 'SYNTHETIC', current_slot: 1 }]
+  const before = structuredClone(s)
+  let view = slotView(s, 1, 200)
+  assert.equal(view.name, '保存的卡名')
+  assert.equal(view.number, 'SYNTHETIC')
+  assert.equal(view.operator, '中国联通')
+  assert.deepEqual(view.savedFields, ['名称', '号码'])
+  assert.deepEqual(s, before)
+  s.reported.slotInfo.sim1_scName = '本次卡名'
+  s.reported.slotInfo.sim1_msIsdn = 'CURRENT'
+  view = slotView(s, 1, 200)
+  assert.equal(view.name, '本次卡名')
+  assert.equal(view.number, 'CURRENT')
+  assert.deepEqual(view.savedFields, [])
+})
+
+test('保存资料不串卡，不跨越失效会话、过期状态或未插卡补用', () => {
+  const base = networkState({})
+  base.card_locations_verified = true
+  base.cards = [{ id: 'card-a', name: '旧卡', number: 'SYNTHETIC', current_slot: 1 }]
+  for (const change of [
+    (s) => (s.online = false),
+    (s) => (s.status_current_session = false),
+    (s) => (s.card_locations_verified = false),
+    (s) => (s.stale_seconds = 50),
+    (s) => (s.status_received_at = 600),
+    (s) => (s.reported.slotInfo.slot1_sta = 'NOSIM'),
+    (s) => (s.cards[0].current_slot = 2),
+    (s) => s.cards.push({ id: 'card-b', name: '另一张卡', current_slot: 1 }),
+  ]) {
+    const s = structuredClone(base)
+    change(s)
+    const view = slotView(s, 1, 200)
+    assert.equal(view.name, '卡槽 1')
+    assert.equal(view.number, '')
+    assert.deepEqual(view.savedFields, [])
+  }
+})
+
 test('板子备注与注册网络分别展示；跨境注册不改变卡名', () => {
   const s = networkState({
     sim1_scName: '  境外测试卡  ',

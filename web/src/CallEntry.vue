@@ -1,7 +1,7 @@
 <script setup>
 import { messageSource } from './inbox-cards.js'
 import { callStates, callerLabel, ringingLabel, callPushLabel } from './call-history.js'
-defineProps({ call: Object, highlighted: Boolean })
+defineProps({ call: Object, cards: Array, highlighted: Boolean })
 function date(ts) {
   return ts ? new Date(ts * 1000).toLocaleString('zh-CN', { hour12: false }) : '未报告'
 }
@@ -15,7 +15,7 @@ function date(ts) {
       }}</span>
     </div>
     <p class="tiny muted">
-      {{ messageSource(call) }} · 来电时卡槽 {{ call.slot
+      {{ messageSource(call, cards) }} · 来电时卡槽 {{ call.slot
       }}<span v-if="highlighted"> · 通知对应记录</span>
     </p>
     <dl class="call-times">

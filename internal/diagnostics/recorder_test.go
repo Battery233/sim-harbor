@@ -55,6 +55,47 @@ func TestConcurrentBoundedWindowAndPaging(t *testing.T) {
 	}
 }
 
+func TestMultipartMetadataIsBoundedAndSurvivesRestart(t *testing.T) {
+	dir := t.TempDir()
+	var output bytes.Buffer
+	r, err := Open(dir, "info", 100, 65536, 1, &output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secret := "PRIVATE-SENDER-SIM-BODY"
+	complete := false
+	ref := Reference("SYNTHETIC-GROUP")
+	r.Record("sms_fragment_received", Fields{SMSGroup: ref, SMSTotal: 3, SMSParts: "3,1,1", SMSComplete: &complete, SMSStoredComplete: &complete, SMSTime: 1700000000})
+	complete = true
+	rows, _ := r.Snapshot(Filter{Reference: ref}, 10)
+	if len(rows) != 1 || rows[0].SMSParts != "1,3" || rows[0].SMSComplete == nil || *rows[0].SMSComplete {
+		t.Fatal("metadata mutated or lost")
+	}
+	*rows[0].SMSComplete = true
+	*rows[0].SMSStoredComplete = true
+	rows, _ = r.Snapshot(Filter{Reference: ref}, 10)
+	if *rows[0].SMSComplete || *rows[0].SMSStoredComplete {
+		t.Fatal("caller mutated retained metadata")
+	}
+	r.Record("sms_fragment_rejected", Fields{SMSGroup: secret, SMSParts: secret, SMSTotal: 999, SMSTime: -1, SMSInvalidParts: -1, Outcome: secret})
+	rows, _ = r.Snapshot(Filter{}, 10)
+	if rows[0].Fields != (Fields{}) || strings.Contains(output.String(), secret) {
+		t.Fatal("unsafe fields escaped")
+	}
+	if err = r.Close(); err != nil {
+		t.Fatal(err)
+	}
+	r, err = Open(dir, "info", 100, 65536, 1, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	rows, _ = r.Snapshot(Filter{Reference: ref}, 10)
+	if len(rows) != 1 || rows[0].SMSTotal != 3 || rows[0].SMSParts != "1,3" || rows[0].SMSComplete == nil || *rows[0].SMSComplete {
+		t.Fatal("restart lost metadata")
+	}
+}
+
 func TestRotationPermissionsAndRestart(t *testing.T) {
 	dir := t.TempDir()
 	r, err := Open(dir, "debug", 1000, 65536, 2, nil)

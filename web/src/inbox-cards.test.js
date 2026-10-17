@@ -62,6 +62,21 @@ test('receipt label preserves snapshot regardless of rename or absence', () => {
   assert.equal(messageSource({ slot: 1 }), '来源未确认')
   assert.equal(messageSource({ card_name: '旧名称' }), '旧名称')
 })
+test('缺少历史名称时只按固定卡ID补用保存名称，不改变快照或借用当前卡槽', () => {
+  const cards = [
+    { ...a, name: '卡A新名称', current_slot: 2 },
+    { ...b, name: '卡B', current_slot: 1 },
+  ]
+  const message = { card_id: a.id, card_name: '', slot: 1 }
+  const before = structuredClone(message)
+  assert.equal(messageSource(message, cards), '卡A新名称 · 已保存名称')
+  assert.deepEqual(message, before)
+  assert.equal(messageSource({ ...message, card_name: '收件时旧名称' }, cards), '收件时旧名称')
+  assert.equal(messageSource({ slot: 1 }, cards), '来源未确认')
+  assert.equal(messageSource({ card_id: c.id, slot: 1 }, cards), '未记录收件时卡名')
+  cards[0].name = ''
+  assert.equal(messageSource(message, cards), '未记录收件时卡名')
+})
 test('export selects identity and rejects mixed slot or malformed IDs', () => {
   assert.equal(new URLSearchParams(messageExportQuery({ card: 'unknown' })).get('card'), 'unknown')
   for (const f of [

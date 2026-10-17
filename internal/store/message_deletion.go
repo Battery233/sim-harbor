@@ -25,7 +25,7 @@ func (s *Store) DeleteMessage(ctx context.Context, id, now int64) error {
 	if now < 1 {
 		now = 1
 	}
-	if _, err = tx.ExecContext(ctx, `UPDATE messages SET deleted_at=?,phone='',body='',fragments='{}',card_name='' WHERE id=?`, now, id); err != nil {
+	if _, err = tx.ExecContext(ctx, `UPDATE messages SET deleted_at=?,phone='',body='',fragments='{}',card_name='',sms_total=0,sms_group_ref='' WHERE id=?`, now, id); err != nil {
 		return err
 	}
 	if _, err = tx.ExecContext(ctx, `UPDATE notifications SET state='canceled',last_error='message_deleted' WHERE message_id=? AND state IN ('pending','restore_held')`, id); err != nil {

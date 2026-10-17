@@ -91,8 +91,12 @@ func recordStatusCards(ctx context.Context, tx *sql.Tx, info map[string]any) err
 		if err != nil {
 			return err
 		}
-		if number, ok := info["sim"+n+"_msIsdn"].(string); ok && id != "" {
-			if _, err = tx.ExecContext(ctx, `UPDATE cards SET number=? WHERE id=?`, cleanCardName(number), id); err != nil {
+		// Missing/empty modem metadata is not an instruction to erase the
+		// identity's saved contact details after removal or reinitialization.
+		number, _ := info["sim"+n+"_msIsdn"].(string)
+		number = cleanCardName(number)
+		if number != "" && id != "" {
+			if _, err = tx.ExecContext(ctx, `UPDATE cards SET number=? WHERE id=?`, number, id); err != nil {
 				return err
 			}
 		}
@@ -133,11 +137,15 @@ func (s *Store) Cards(ctx context.Context, info map[string]any, verified bool) (
 	return result, rows.Err()
 }
 
-const messageColumns = `id,slot,phone,body,sms_ts,complete,is_read,coalesce(card_id,''),card_name`
+const messageColumns = `id,slot,phone,body,sms_ts,complete,is_read,coalesce(card_id,''),card_name,fragments,sms_total,sms_group_ref`
 
 func scanMessage(row scanner) (Message, error) {
 	var m Message
-	err := row.Scan(&m.ID, &m.Slot, &m.Phone, &m.Body, &m.Timestamp, &m.Complete, &m.Read, &m.CardID, &m.CardName)
+	var parts, group string
+	err := row.Scan(&m.ID, &m.Slot, &m.Phone, &m.Body, &m.Timestamp, &m.Complete, &m.Read, &m.CardID, &m.CardName, &parts, &m.PartsTotal, &group)
+	if err == nil {
+		err = m.setMultipart(parts, group)
+	}
 	return m, err
 }
 func (s *Store) CardMessagePage(ctx context.Context, card string, slot int, q string, before int64, limit int) ([]Message, error) {

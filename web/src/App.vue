@@ -2,6 +2,7 @@
 import { ref, reactive, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { slotView, mergeMessages, messageText, hasFormattedText, wifiName } from './presentation.js'
 import { cardFilterOptions, messageSource } from './inbox-cards.js'
+import { multipartProgress } from './multipart-progress.js'
 import { createInboxDeletion } from './inbox-delete.js'
 import CardRecords from './CardRecords.vue'
 import InfoTip from './InfoTip.vue'
@@ -427,6 +428,9 @@ onUnmounted(() => {
             <p class="sim-number">
               <strong>{{ card.number || '未记录号码' }}</strong>
             </p>
+            <p v-if="card.savedFields.length" class="tiny muted">
+              {{ card.savedFields.join('、') }}使用已保存资料
+            </p>
             <dl>
               <div>
                 <dt>{{ card.fresh ? '信号' : '上次信号' }}</dt>
@@ -606,10 +610,12 @@ onUnmounted(() => {
                   <div class="message-title">
                     <strong>{{ m.phone }}</strong
                     ><span v-if="!m.read" class="unread-dot" aria-label="未读"></span
-                    ><span v-if="!m.complete" class="badge small">等待分片</span>
+                    ><span v-if="multipartProgress(m)" class="badge small">{{
+                      multipartProgress(m).label
+                    }}</span>
                   </div>
                   <div class="tiny muted">
-                    {{ messageSource(m) }} · 收件时卡槽 {{ m.slot
+                    {{ messageSource(m, state?.cards) }} · 收件时卡槽 {{ m.slot
                     }}<span v-if="!m.card_id"> · 身份未确认</span>
                   </div>
                   <p>{{ messageText(m) || '长短信正在等待完整内容…' }}</p>
@@ -647,7 +653,8 @@ onUnmounted(() => {
         ref="dialog"
       >
         <div class="detail-head">
-          <span class="badge">{{ messageSource(selected) }} · 收件时卡槽 {{ selected.slot }}</span
+          <span class="badge">
+            {{ messageSource(selected, state?.cards) }} · 收件时卡槽 {{ selected.slot }}</span
           ><button
             class="quiet"
             :disabled="deleteState.busy"
@@ -661,7 +668,9 @@ onUnmounted(() => {
         <p class="tiny muted">
           {{ date(selected.timestamp) }} · {{ selected.read ? '已读' : '未读' }}
         </p>
-        <p v-if="!selected.complete" class="notice">这是尚未收齐的长短信。</p>
+        <p v-if="multipartProgress(selected)" class="notice">
+          {{ multipartProgress(selected).detail }}
+        </p>
         <p v-if="hasFormattedText(selected)" class="tiny muted">
           {{ showRaw ? '正在查看收到的原文。' : '已按换行和缩进排版，原文保留。' }}
         </p>
@@ -679,7 +688,9 @@ onUnmounted(() => {
         </div>
         <section v-else class="delete-confirmation" aria-label="确认删除短信">
           <h3>删除这条短信？</h3>
-          <p>{{ messageSource(deleteState.target) }} · {{ deleteState.target.phone }}</p>
+          <p>
+            {{ messageSource(deleteState.target, state?.cards) }} · {{ deleteState.target.phone }}
+          </p>
           <p class="tiny muted">{{ date(deleteState.target.timestamp) }}</p>
           <p class="delete-preview">
             {{ messageText(deleteState.target).slice(0, 120) || '尚未收齐的长短信' }}

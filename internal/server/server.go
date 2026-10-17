@@ -200,7 +200,9 @@ func (s *Server) handle(ctx context.Context, c net.Conn) {
 				e.CardName = name
 			}
 		}
+		s.recordSMSIngest(ctx, sess, e, "sms_fragment_received", nil)
 		if err = s.Store.Ingest(ctx, e, plain, s.Config.BarkKey != ""); err != nil {
+			s.recordSMSIngest(ctx, sess, e, "sms_fragment_rejected", err)
 			s.mu.Unlock()
 			if callReport {
 				s.notificationGate.Unlock()
@@ -208,6 +210,7 @@ func (s *Server) handle(ctx context.Context, c net.Conn) {
 			closed = "event_persistence_failed"
 			return
 		}
+		s.recordSMSIngest(ctx, sess, e, "sms_fragment_stored", nil)
 		var old *session
 		becameBound := !bound
 		if !bound {

@@ -1,6 +1,6 @@
 export const notificationErrors = {
   unknown: '结果未知，请在 iPhone 上核对',
-  accepted: 'Bark 已接受，手机收到情况待核对',
+  accepted: '推送成功',
   transport_failed: '无法完成推送连接',
   http_rejected: '推送服务拒绝请求',
   invalid_response: '推送服务返回内容无效',
