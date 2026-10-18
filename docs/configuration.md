@@ -43,7 +43,7 @@
 | `device_allowlist_enabled` | 启用后按 `device_cidrs` 筛选 TCP 连接来源 |
 | `aes_mode` | 两端一致，Key 与 IV 各 16 字节，见[安全说明](../SECURITY.md) |
 | `public_url` | 手机能访问的管理入口；用于通知详情链接 |
-| `admin_token_header` | 可选的管理鉴权请求头名称；留空使用 `Authorization`，详见下方未发布功能说明 |
+| `admin_token_header` | v1.0.3 起支持；管理鉴权请求头名称，留空使用 `Authorization`，详见下方说明 |
 | `bark_base_url` | Bark 服务，例如 `https://api.day.app` |
 | `device_timezone` | 板子时间解释与限额时区，默认 `Asia/Shanghai` |
 | `stale_seconds` | 最近上报超过此时限视为不新鲜，示例 345 秒 |
@@ -56,9 +56,9 @@
 
 初始化环境变量名为 `SIM_ADMIN_TOKEN`、`SIM_AES_KEY`、`SIM_AES_IV`、`SIM_BARK_KEY`，JSON 通过对应 `*_env` 字段引用。管理员 Token 至少 24 字符。
 
-### 自定义鉴权请求头（未发布）
+### 自定义鉴权请求头
 
-此配置属于[未发布改动](../CHANGELOG.md#未发布)，v1.0.2 尚不支持。默认请求格式为 `Authorization: Bearer <管理token>`。如果反向代理的 Basic Auth 也使用 `Authorization`，可在“系统配置 → 管理访问”将“自定义鉴权请求头”设为 `X-SIMHarbor-Authorization`，或在初始化 JSON 中设置：
+v1.0.3 起支持此配置，v1.0.2 尚不支持。默认请求格式为 `Authorization: Bearer <管理token>`。如果反向代理的 Basic Auth 也使用 `Authorization`，可在“系统配置 → 管理访问”将“自定义鉴权请求头”设为 `X-SIMHarbor-Authorization`，或在初始化 JSON 中设置：
 
 ```json
 {

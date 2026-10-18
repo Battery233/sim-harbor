@@ -2,9 +2,15 @@
 
 ## 未发布
 
+暂无条目。
+
+## 1.0.3
+
 - 系统配置新增 `admin_token_header`，可自定义管理鉴权请求头；留空沿用 `Authorization`，值保持 `Bearer <管理token>`，便于与反向代理 Basic Auth 共存。
 - 网页登录前仅发现当前生效的头名称，普通 API、导出、备份下载和健康检查同步使用；保存新配置后重启应用生效。
 - 校验头名称与浏览器保留字段；管理请求和下载不跟随重定向，避免自定义鉴权头随重定向发送。
+
+本版沿用 schema 16，不升级数据库。旧版 v1.0.2 不识别新的自定义头配置字段，回退前按[升级与回退说明](docs/releases.md#从-v102-升级到-v103)恢复兼容配置。相关改动见 [PR #2](https://github.com/Battery233/sim-harbor/pull/2)，解决 [issue #1](https://github.com/Battery233/sim-harbor/issues/1)。
 
 ## 1.0.2
 

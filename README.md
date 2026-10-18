@@ -81,6 +81,6 @@ flowchart LR
 
 ## 版本与开发
 
-当前版本为 **1.0.2**，改动见[更新记录](CHANGELOG.md#102)。从 v1.0.1 升级涉及数据库兼容性，先阅读[升级说明](docs/releases.md#从-v101-升级到-v102)。版本镜像、Docker 更新、验证与回退见[版本维护](docs/releases.md)。
+当前源码版本为 **1.0.3**，改动见[更新记录](CHANGELOG.md#103)。从 v1.0.2 升级请阅读[升级说明](docs/releases.md#从-v102-升级到-v103)；从 v1.0.1 升级还需注意[数据库兼容性](docs/releases.md#从-v101-升级到-v102)。版本镜像需在对应标签的构建成功后核对使用，发布、更新与回退见[版本维护](docs/releases.md)。
 
 开发和检查命令见 [CONTRIBUTING.md](CONTRIBUTING.md)。依赖版本见 [go.mod](go.mod)、[前端锁文件](web/package-lock.json)和 [Dockerfile](Dockerfile)。当前暂未添加许可证；复用与分发请先联系维护者，第三方依赖适用各自许可。

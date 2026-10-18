@@ -6,7 +6,7 @@ SIMHarbor 为个人自托管提供独立访问凭据、设备来源规则、私�
 
 使用至少 24 字符的独立管理员 Token，远程访问配置 HTTPS。可搭配 Cloudflare Tunnel + Access，为全站与 API 增加身份校验，并验证回源身份。宿主 HTTP 绑定回环地址，使访问统一经过受保护的入口。
 
-默认使用 `Authorization: Bearer <管理token>`。未发布版本支持[自定义鉴权请求头](docs/configuration.md#自定义鉴权请求头未发布)，用于与代理 Basic Auth 共存；它改变凭据的传递字段，不替代 HTTPS 或代理访问控制。登录前的 `/api/auth` 仅公开当前头名称，其他管理数据继续需要凭据。自定义头应端到端透传，勿记录其值；管理 API 和文件下载不会跟随重定向。
+默认使用 `Authorization: Bearer <管理token>`。v1.0.3 起支持[自定义鉴权请求头](docs/configuration.md#自定义鉴权请求头)，用于与代理 Basic Auth 共存；它改变凭据的传递字段，不替代 HTTPS 或代理访问控制。登录前的 `/api/auth` 仅公开当前头名称，其他管理数据继续需要凭据。自定义头应端到端透传，勿记录其值；管理 API 和文件下载不会跟随重定向。
 
 ## 设备通道
 
