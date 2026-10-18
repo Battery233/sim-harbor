@@ -43,6 +43,7 @@
 | `device_allowlist_enabled` | 启用后按 `device_cidrs` 筛选 TCP 连接来源 |
 | `aes_mode` | 两端一致，Key 与 IV 各 16 字节，见[安全说明](../SECURITY.md) |
 | `public_url` | 手机能访问的管理入口；用于通知详情链接 |
+| `admin_token_header` | 可选的管理鉴权请求头名称；留空使用 `Authorization`，详见下方未发布功能说明 |
 | `bark_base_url` | Bark 服务，例如 `https://api.day.app` |
 | `device_timezone` | 板子时间解释与限额时区，默认 `Asia/Shanghai` |
 | `stale_seconds` | 最近上报超过此时限视为不新鲜，示例 345 秒 |
@@ -54,6 +55,33 @@
 | `send_max_segments` | 单条短信的估算段数上限，默认 1 段，可配置 1～10 段 |
 
 初始化环境变量名为 `SIM_ADMIN_TOKEN`、`SIM_AES_KEY`、`SIM_AES_IV`、`SIM_BARK_KEY`，JSON 通过对应 `*_env` 字段引用。管理员 Token 至少 24 字符。
+
+### 自定义鉴权请求头（未发布）
+
+此配置属于[未发布改动](../CHANGELOG.md#未发布)，v1.0.2 尚不支持。默认请求格式为 `Authorization: Bearer <管理token>`。如果反向代理的 Basic Auth 也使用 `Authorization`，可在“系统配置 → 管理访问”将“自定义鉴权请求头”设为 `X-SIMHarbor-Authorization`，或在初始化 JSON 中设置：
+
+```json
+{
+  "admin_token_header": "X-SIMHarbor-Authorization"
+}
+```
+
+已有实例优先使用数据目录中的统一配置；后续应在网页保存，确认重启应用后生效，再刷新网页。只修改初始化 JSON 不会覆盖已保存的统一配置。此字段只填写头名称，管理 Token 不变；清空字段并保存、重启即可恢复默认头。
+
+启用后，同一个请求可同时携带两层认证：
+
+```http
+Authorization: Basic <代理认证信息>
+X-SIMHarbor-Authorization: Bearer <管理token>
+```
+
+反向代理需保留并透传自定义头，且 `/api/auth`、其余 `/api/` 路由和下载接口应使用同一代理入口。浏览器在发送管理凭据前读取 `GET /api/auth`；该接口仅返回当前生效的头名称，不返回 Token、其他配置或业务数据，不绕过反向代理自身的认证。保存待重启的新头名不会提前用于认证。
+
+头名称不区分大小写，建议使用由英文字母和连字符组成的名称。应用拒绝空格、冒号、换行、超过 128 字符的名称，以及浏览器保留的 `Host`、`Cookie`、`Origin`、`Content-*`、`Sec-*`、`Proxy-*` 等字段。自定义后仅校验所选头，不同时回退接受 `Authorization`。请求头中的值仍须为 `Bearer <管理token>`；网页输入凭据时只填 Token 本身。
+
+普通 API、导出、备份下载及容器健康检查使用同一配置。管理请求不跟随 HTTP 重定向；反向代理需直接返回 API 响应，不能将 API 重定向到其他地址。修改头名不改变凭据权限、同源校验或数据格式。
+
+本改动不升级数据库。旧版 v1.0.2 不识别新配置字段；如需回退，先在本版中清空该设置、保存并重启以恢复默认鉴权，确保初始化 JSON 也不包含 `admin_token_header`，再使用旧版镜像。清空后，统一配置不再写入该字段；凭据及其他配置保持原值。
 
 外发限额按发送尝试记录计算，未知结果也计入，日期按 `device_timezone` 划分；实际值以当前配置为准。可根据套餐与使用习惯设置限额，详见[短信外发](features.md#短信外发)。
 

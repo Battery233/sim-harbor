@@ -12,6 +12,7 @@
   "aes_key_env": "SIM_AES_KEY",
   "aes_iv_env": "SIM_AES_IV",
   "admin_token_env": "SIM_ADMIN_TOKEN",
+  "admin_token_header": "",
   "bark_key_env": "SIM_BARK_KEY",
   "bark_base_url": "https://api.day.app",
   "public_url": "https://replace.invalid",

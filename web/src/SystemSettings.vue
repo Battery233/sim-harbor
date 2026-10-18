@@ -19,6 +19,10 @@ let stopped = false,
   poll
 const groups = [
   {
+    title: '管理访问',
+    fields: [['admin_token_header', '自定义鉴权请求头（留空使用 Authorization）', 'text']],
+  },
+  {
     title: '管理网址与时间',
     fields: [
       ['public_url', '通知跳转的管理网址', 'text'],
@@ -77,6 +81,7 @@ function adopt(data) {
   snapshot.value = data
   values.value = {
     ...data.values,
+    admin_token_header: data.values.admin_token_header || '',
     device_allowlist_enabled: data.values.device_allowlist_enabled !== false,
     status_alerts_enabled: data.values.status_alerts_enabled !== false,
   }
@@ -211,11 +216,17 @@ onUnmounted(() => {
                 v-else
                 v-model="values[field[0]]"
                 type="text"
-                :required="!['public_url', 'bark_base_url'].includes(field[0])"
+                :required="
+                  !['public_url', 'bark_base_url', 'admin_token_header'].includes(field[0])
+                "
             /></label>
           </div>
           <p v-if="group.title === '管理网址与时间'" class="tiny muted">
             记录解析与统计时区只影响管理应用，不修改板子的时钟或时区。
+          </p>
+          <p v-if="group.title === '管理访问'" class="tiny muted">
+            与反向代理 Basic Auth 冲突时，可填写 X-SIMHarbor-Authorization。仅填写请求头名称，
+            管理凭据不变；保存并重启应用后生效，随后刷新页面。反向代理需透传该请求头。
           </p>
         </div>
         <details class="settings-group settings-advanced">

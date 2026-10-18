@@ -291,6 +291,9 @@ func (s *Server) write(sess *session, value any) error {
 
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/auth", func(w http.ResponseWriter, r *http.Request) {
+		reply(w, http.StatusOK, map[string]string{"admin_token_header": s.Config.AdminTokenHeaderName()})
+	})
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, r *http.Request) {
 		if s.Store.DB.PingContext(r.Context()) != nil {
 			reply(w, 503, map[string]string{"status": "degraded"})
@@ -466,7 +469,9 @@ func (s *Server) Handler() http.Handler {
 		}
 		if strings.HasPrefix(r.URL.Path, "/api/") {
 			localHealth := r.Method == "GET" && r.URL.Path == "/api/health" && loopbackPeer(r.RemoteAddr)
-			if !localHealth && s.Config.AdminToken != "" && (!strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ") || subtle.ConstantTimeCompare([]byte(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")), []byte(s.Config.AdminToken)) != 1) {
+			publicAuth := r.Method == http.MethodGet && r.URL.Path == "/api/auth"
+			auth := r.Header.Values(s.Config.AdminTokenHeaderName())
+			if !localHealth && !publicAuth && s.Config.AdminToken != "" && (len(auth) != 1 || !strings.HasPrefix(auth[0], "Bearer ") || subtle.ConstantTimeCompare([]byte(strings.TrimPrefix(auth[0], "Bearer ")), []byte(s.Config.AdminToken)) != 1) {
 				reply(w, 401, map[string]string{"error": "access_required"})
 				return
 			}

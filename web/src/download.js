@@ -3,6 +3,7 @@
 export function createFileRequest({
   getCredential,
   onUnauthorized,
+  getAuthHeaders,
   fetcher = fetch,
   timeout = 60000,
 }) {
@@ -11,11 +12,18 @@ export function createFileRequest({
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), timeout)
     try {
+      const authHeaders = getAuthHeaders
+        ? await getAuthHeaders(credential)
+        : credential
+          ? { Authorization: 'Bearer ' + credential }
+          : {}
+      if (credential !== getCredential()) throw new Error('访问身份已变化，请重新操作。')
       const response = await fetcher('/api' + path, {
         method,
         signal: controller.signal,
+        redirect: 'error',
         headers: {
-          ...(credential ? { Authorization: 'Bearer ' + credential } : {}),
+          ...authHeaders,
           ...(body ? { 'Content-Type': 'application/json' } : {}),
         },
         body: body ? JSON.stringify(body) : undefined,
