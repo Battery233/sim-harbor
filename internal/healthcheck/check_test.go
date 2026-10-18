@@ -32,14 +32,31 @@ func TestCheckRequiresHealthResponseAndNeverFollowsRedirect(t *testing.T) {
 		}))
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		address := strings.Replace(strings.TrimPrefix(s.URL, "http://"), "127.0.0.1:", "0.0.0.0:", 1)
-		err := Check(ctx, address, "SYNTHETIC")
+		err := Check(ctx, address, "SYNTHETIC", "")
 		cancel()
 		s.Close()
 		if (err == nil) != tc.ok {
 			t.Fatal(tc.status, err)
 		}
 	}
-	if err := Check(context.Background(), "invalid", "SYNTHETIC"); err == nil {
+	if err := Check(context.Background(), "invalid", "SYNTHETIC", ""); err == nil {
 		t.Fatal("invalid address accepted")
+	}
+}
+
+func TestCheckUsesCustomAuthenticationHeader(t *testing.T) {
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "" || r.Header.Get("X-SIMHarbor-Authorization") != "Bearer SYNTHETIC" {
+			t.Error("health check did not use only the configured header")
+		}
+		w.Write([]byte(`{"status":"ok"}`))
+	}))
+	defer s.Close()
+	address := strings.TrimPrefix(s.URL, "http://")
+	if err := Check(context.Background(), address, "SYNTHETIC", "X-SIMHarbor-Authorization"); err != nil {
+		t.Fatal(err)
+	}
+	if err := Check(context.Background(), address, "SYNTHETIC", "Cookie"); err == nil {
+		t.Fatal("health check accepted a reserved authentication header")
 	}
 }

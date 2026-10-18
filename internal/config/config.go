@@ -37,6 +37,7 @@ type Config struct {
 	AESKeyEnv              string         `json:"aes_key_env"`
 	AESIVEnv               string         `json:"aes_iv_env"`
 	AdminTokenEnv          string         `json:"admin_token_env"`
+	AdminTokenHeader       string         `json:"admin_token_header,omitempty"`
 	BarkKeyEnv             string         `json:"bark_key_env"`
 	BarkBaseURL            string         `json:"bark_base_url"`
 	PublicURL              string         `json:"public_url"`
@@ -102,6 +103,10 @@ func loopback(address string) bool {
 }
 
 func (c *Config) Validate() error {
+	if _, err := NormalizeAdminTokenHeader(c.AdminTokenHeader); err != nil {
+		return err
+	}
+	c.AdminTokenHeader = strings.TrimSpace(c.AdminTokenHeader)
 	if c.LogLevel == "" {
 		c.LogLevel = "info"
 	}

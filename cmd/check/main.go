@@ -20,7 +20,7 @@ func main() {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	if healthcheck.Check(ctx, c.HTTPAddr, c.AdminToken) != nil {
+	if healthcheck.Check(ctx, c.HTTPAddr, c.AdminToken, c.AdminTokenHeader) != nil {
 		os.Exit(1)
 	}
 }

@@ -18,6 +18,7 @@ import DataTools from './DataTools.vue'
 import { createFileRequest } from './download.js'
 import { createRequest } from './request.js'
 import { createAccessSession } from './access-session.js'
+import { createAuthHeaders } from './auth-config.js'
 const tab = ref('inbox')
 const linkedCall = ref(0)
 const callsCardFilter = ref('')
@@ -35,6 +36,7 @@ const loading = ref(false),
 const unlocking = ref(false)
 const showRaw = ref(false)
 const access = createAccessSession()
+const authHeaders = createAuthHeaders()
 const locked = ref(false),
   token = ref(''),
   now = ref(Date.now() / 1000),
@@ -95,6 +97,7 @@ const errors = {
 }
 const api = createRequest({
   getCredential: () => credential,
+  getAuthHeaders: (value) => authHeaders.get(value),
   onUnauthorized: lockAccess,
   errors,
 })
@@ -124,6 +127,7 @@ function escapeDetail() {
 }
 const fileRequest = createFileRequest({
   getCredential: () => credential,
+  getAuthHeaders: (value) => authHeaders.get(value),
   onUnauthorized: lockAccess,
 })
 const online = computed(
@@ -282,6 +286,7 @@ async function copy() {
 }
 async function unlock() {
   if (unlocking.value || stopped) return
+  authHeaders.reset()
   const version = ++generation
   unlocking.value = true
   credential = token.value.trim()
@@ -315,6 +320,7 @@ async function openLinked() {
     }
 }
 function forget() {
+  authHeaders.reset()
   deletion.reset()
   generation++
   queryRevision++

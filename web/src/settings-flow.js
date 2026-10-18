@@ -3,7 +3,8 @@ export const settingsErrors = {
   settings_unavailable: '无法读取或保存私有配置，请保留当前设置并查看运行诊断。',
   settings_conflict: '配置已被其他页面修改，请重新读取后核对。',
   settings_confirmation_required: '请先核对配置并勾选确认。',
-  invalid_settings: '配置未通过校验：请核对地址、白名单、AES长度、管理凭据长度和数值范围。',
+  invalid_settings:
+    '配置未通过校验：请核对地址、白名单、AES长度、管理凭据长度、鉴权请求头名称和数值范围。',
   settings_restart_unavailable: '当前运行入口不支持网页重启。',
   settings_restarting: '应用正在重启，请稍后刷新，不要重复提交。',
 }

@@ -7,10 +7,16 @@ import (
 	"io"
 	"net"
 	"net/http"
+
+	"github.com/Battery233/sim-harbor/internal/config"
 )
 
 // Check probes only the service/database health endpoint, never the board.
-func Check(ctx context.Context, address, token string) error {
+func Check(ctx context.Context, address, token, header string) error {
+	name, err := config.NormalizeAdminTokenHeader(header)
+	if err != nil {
+		return errors.New("invalid health authentication header")
+	}
 	host, port, err := net.SplitHostPort(address)
 	if err != nil {
 		return errors.New("invalid health address")
@@ -26,7 +32,7 @@ func Check(ctx context.Context, address, token string) error {
 		return errors.New("health request unavailable")
 	}
 	if token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set(name, "Bearer "+token)
 	}
 	client := http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	resp, err := client.Do(req)
