@@ -91,7 +91,7 @@ func TestMultipartMigrationKeepsUnknownTotalAndOriginalHistory(t *testing.T) {
 	}
 }
 
-func TestMultipartDiagnosticReferenceDoesNotMergeTimestampChanges(t *testing.T) {
+func TestMultipartAssemblyAllowsTimestampChanges(t *testing.T) {
 	s := open(t, filepath.Join(t.TempDir(), "sim.db"))
 	e := sms()
 	e.ICCID, e.Group, e.Max, e.Body = "SYNTHETIC-CARD", "SYNTHETIC-GROUP", 2, ""
@@ -107,8 +107,8 @@ func TestMultipartDiagnosticReferenceDoesNotMergeTimestampChanges(t *testing.T) 
 	}
 	ingest(t, s, e)
 	rows, err := s.Messages(context.Background(), 0, "")
-	if err != nil || len(rows) != 2 || rows[0].Complete || rows[1].Complete {
-		t.Fatal("diagnostic reference changed merge policy", err)
+	if err != nil || len(rows) != 1 || !rows[0].Complete || rows[0].Body != "AB" || count(t, s, "notifications") != 1 {
+		t.Fatal("same-group fragments with nearby timestamps did not assemble", err)
 	}
 	e.ICCID = "ANOTHER-CARD"
 	if SMSGroupReference(e) == ref {

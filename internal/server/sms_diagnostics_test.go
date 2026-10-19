@@ -80,6 +80,7 @@ func TestMultipartDiagnosticsAtInfoAndRejectedTransaction(t *testing.T) {
 	// board's own comp flag remains false. Diagnostics must distinguish both.
 	conn = connect(t, l)
 	event["smsMaxNo"] = 3
+	event["smsTs"] = 1700000006
 	event["smsBdFrag"] = []string{"2,PRIVATE-SECOND", "3,PRIVATE-THIRD"}
 	send(t, conn, s.codec(), event)
 	deadline := time.Now().Add(2 * time.Second)
@@ -88,6 +89,9 @@ func TestMultipartDiagnosticsAtInfoAndRejectedTransaction(t *testing.T) {
 		found := false
 		for _, row := range rows {
 			if row.Code == "sms_fragment_stored" && row.SMSStoredComplete != nil && *row.SMSStoredComplete {
+				if row.MessageID != stored.MessageID || row.SMSTime != 1700000006 {
+					t.Fatal("diagnostics lost actual report time or canonical message ID")
+				}
 				if row.SMSComplete == nil || *row.SMSComplete {
 					t.Fatal("board and stored flags conflated")
 				}

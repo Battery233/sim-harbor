@@ -220,6 +220,11 @@ DELETE FROM schema_version; INSERT INTO schema_version VALUES(6);`); e != nil {
 			return e
 		}
 	}
+	if version.Int64 < 17 {
+		if _, e = tx.Exec(smsReceiptSchema); e != nil {
+			return e
+		}
+	}
 
 	if _, e = tx.Exec(`UPDATE calls SET state='unknown' WHERE ended=0`); e != nil {
 		return e
@@ -283,36 +288,16 @@ func ingestSMS(ctx context.Context, tx *sql.Tx, e protocol.Event, notify bool) e
 	if err != nil {
 		return err
 	}
-	// Known-card dedup follows the SIM across slots. Unknown sources remain slot-scoped.
-	location := any(e.Slot)
-	if iccid != "" {
-		location = "card"
-	}
-	businessIdentity := func(loc any) []byte {
-		values := []any{e.DeviceID, loc, iccid, e.MD5}
-		if e.Group != "" {
-			values = []any{e.DeviceID, loc, iccid, "group", e.Group, e.Phone, e.SMSTS}
-		} else if e.MD5 == "" {
-			values = []any{e.DeviceID, loc, iccid, e.Phone, e.SMSTS, e.Body}
+	incoming := map[string]string{}
+	if e.Group != "" && (e.Complete == nil || !*e.Complete) {
+		incoming, err = parseSMSFragments(e.Fragments, int(e.Max))
+		if err != nil {
+			return err
 		}
-		raw, _ := json.Marshal(values)
-		return raw
 	}
-	key := hash(businessIdentity(location))
-	// A verified replay can match a pre-v7 row's old key. Do not guess on migration.
-	if iccid != "" {
-		var existing string
-		legacy := hash(businessIdentity(e.Slot))
-		lookup := tx.QueryRowContext(ctx, `SELECT key FROM messages WHERE key IN (?,?) ORDER BY (key=?) DESC LIMIT 1`, key, legacy, key).Scan(&existing)
-		if lookup == nil {
-			if existing != key {
-				if _, err = tx.ExecContext(ctx, `UPDATE messages SET key=? WHERE key=?`, key, existing); err != nil {
-					return err
-				}
-			}
-		} else if !errors.Is(lookup, sql.ErrNoRows) {
-			return lookup
-		}
+	key, err := resolveSMSKey(ctx, tx, e, cardID, incoming)
+	if err != nil {
+		return err
 	}
 	parts := map[string]string{}
 	body := e.Body
@@ -351,13 +336,7 @@ func ingestSMS(ctx context.Context, tx *sql.Tx, e protocol.Event, notify bool) e
 		body = storedBody
 		complete = true
 	} else if !complete && e.Group != "" {
-		for _, fragment := range e.Fragments {
-			a, b, ok := strings.Cut(fragment, ",")
-			n, err := strconv.Atoi(a)
-			if !ok || err != nil || n < 1 || n > int(e.Max) {
-				return ErrSMSFragmentInvalid
-			}
-			a = strconv.Itoa(n)
+		for a, b := range incoming {
 			if old, ok := parts[a]; ok && old != b {
 				return ErrSMSFragmentConflict
 			}
@@ -395,6 +374,12 @@ func ingestSMS(ctx context.Context, tx *sql.Tx, e protocol.Event, notify bool) e
 	}
 	if id == 0 {
 		if err = tx.QueryRowContext(ctx, `SELECT id FROM messages WHERE key=?`, key).Scan(&id); err != nil {
+			return err
+		}
+	}
+	if e.Group != "" && e.Max > 1 {
+		receipt, _ := smsBusinessKeys(e)
+		if _, err = tx.ExecContext(ctx, `INSERT INTO sms_receipts(key,message_id,sms_ts) VALUES(?,?,?) ON CONFLICT(key) DO NOTHING`, receipt, id, int64(e.SMSTS)); err != nil {
 			return err
 		}
 	}

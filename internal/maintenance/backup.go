@@ -157,6 +157,9 @@ func databaseInfo(ctx context.Context, path string) (Manifest, error) {
 	// Reject views/triggers/virtual or foreign tables. Counts use fixed names;
 	// never execute arbitrary schema objects supplied by an uploaded archive.
 	tables := []string{"schema_version", "events", "device", "messages", "notifications", "outgoing", "outgoing_refs", "delivery_receipts", "notification_test"}
+	if m.Schema >= 17 {
+		tables = append(tables, "sms_receipts")
+	}
 	if m.Schema >= 14 {
 		tables = append(tables, "status_alert_monitors", "status_alert_jobs")
 	}
@@ -221,6 +224,13 @@ func databaseInfo(ctx context.Context, path string) (Manifest, error) {
 		m.Counts[name] = n
 	}
 	// Check columns consumed by the runtime before the restore tool can migrate.
+	if m.Schema >= 17 {
+		r, err := db.QueryContext(ctx, `SELECT key,message_id,sms_ts FROM sms_receipts LIMIT 0`)
+		if err != nil {
+			return m, ErrInvalidBackup
+		}
+		r.Close()
+	}
 	if m.Schema >= 16 {
 		r, err := db.QueryContext(ctx, `SELECT sms_total,sms_group_ref FROM messages LIMIT 0`)
 		if err != nil {

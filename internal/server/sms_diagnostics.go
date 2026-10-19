@@ -55,7 +55,7 @@ func (s *Server) recordSMSIngest(ctx context.Context, sess *session, e protocol.
 		f.Outcome = "stored"
 		if f.SMSGroup != "" {
 			lookup, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
-			id, complete, err := s.Store.SMSProgress(lookup, f.SMSGroup, int64(e.SMSTS))
+			id, complete, err := s.Store.SMSProgress(lookup, e)
 			cancel()
 			if err == nil {
 				f.MessageID = id

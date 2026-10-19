@@ -31,7 +31,7 @@ values = {
     'SIM_AES_KEY': secrets.token_urlsafe(12),
     'SIM_AES_IV': secrets.token_urlsafe(12),
     'SIM_BARK_KEY': '',
-    'SIM_IMAGE': 'sim-harbor:1.0.3',
+    'SIM_IMAGE': 'sim-harbor:1.0.4',
     'SIM_HTTP_PORT': '18880',
     'SIM_DEVICE_BIND': '127.0.0.1',
     'SIM_DEVICE_PORT': '39090',

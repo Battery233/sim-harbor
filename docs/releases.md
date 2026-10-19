@@ -1,15 +1,15 @@
 # 版本发布、Docker 更新与验证
 
-版本号采用 `主版本.次版本.修订号`，发布标签为 `v1.0.3`，镜像标签为 `1.0.3`。应用在已认证的 `/api/state` 和健康接口 `/api/health` 返回 `version`，用于核对实际运行版本。
+版本号采用 `主版本.次版本.修订号`，发布标签为 `v1.0.4`，镜像标签为 `1.0.4`。应用在已认证的 `/api/state` 和健康接口 `/api/health` 返回 `version`，用于核对实际运行版本。
 
 ## 标签、Release 与镜像的关系
 
 | 项目 | 作用 | 创建方式 |
 | --- | --- | --- |
-| 应用版本 `1.0.3` | 网页和 API 显示的运行版本 | 在源码与构建配置中维护 |
-| Git 标签 `v1.0.3` | 固定本版源码对应的提交 | 本地创建后推送，或在 GitHub 发布页面创建 |
+| 应用版本 `1.0.4` | 网页和 API 显示的运行版本 | 在源码与构建配置中维护 |
+| Git 标签 `v1.0.4` | 固定本版源码对应的提交 | 本地创建后推送，或在 GitHub 发布页面创建 |
 | GitHub Release | 展示版本说明、源码包及附件 | 在 Releases 页面基于标签发布 |
-| GHCR 镜像 `:1.0.3` | Docker 安装与更新使用的构建产物 | `Release image` 工作流构建并上传 |
+| GHCR 镜像 `:1.0.4` | Docker 安装与更新使用的构建产物 | `Release image` 工作流构建并上传 |
 
 当前 [Release image 工作流](../.github/workflows/release.yml)仅在收到 `v*` 标签推送后运行，负责镜像验证与发布；Release 页面由维护者另外填写和发布。本地提交、普通 `main` 分支推送均不触发镜像上传，当前也没有手动触发或定时发布入口。
 
@@ -20,17 +20,17 @@
 1. 整理代码、文档、版本号与更新记录，运行 CONTRIBUTING 中与改动相关的检查。
 2. 核对版本号一致：`internal/version/version.go`、`web/package.json`/锁文件、Dockerfile 标签、Compose 默认镜像与本版文档。
 3. 按部署目标分别构建和验证架构镜像。使用合成数据检查启动、健康、备份/恢复和迁移确认。
-4. 确定包含本版最终代码与文档的提交，再创建并推送版本标签。例如首次创建 v1.0.3：
+4. 确定包含本版最终代码与文档的提交，再创建并推送版本标签。例如首次创建 v1.0.4：
 
    ```sh
    git status --short --branch
    git log -1 --oneline
-   git tag -a v1.0.3 -m "SIMHarbor 1.0.3"
+   git tag -a v1.0.4 -m "SIMHarbor 1.0.4"
    git push origin main
-   git push origin v1.0.3
+   git push origin v1.0.4
    ```
 
-   已有本地标签时先用 `git show --no-patch v1.0.3` 核对指向，再推送该标签。已发布版本保持固定，后续修正使用新提交及相应版本。
+   已有本地标签时先用 `git show --no-patch v1.0.4` 核对指向，再推送该标签。已发布版本保持固定，后续修正使用新提交及相应版本。
 5. 打开 Actions → Release image，等待验证与发布成功，并核对镜像的 amd64/arm64 架构清单。工作流成功后再检查 Packages 中对应镜像版本。
 6. 在 GitHub 的 Releases → Create a new release 中选择已有标签，填写标题和本版说明后 Publish release。也可在该页面创建新标签并选择目标提交，再发布以触发构建，步骤见 [GitHub 官方指南](https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository)。
 7. 分享镜像时核对 GHCR 包的可见性；公开使用测试匿名拉取，私有分享准备相应读取权限。复用与分发按 README 的许可说明处理。
@@ -43,9 +43,9 @@ GitHub Release、镜像发布与云端部署各有独立结果，按上述顺序
 
 ```sh
 git fetch origin --tags
-git checkout --detach v1.0.3
-docker build --platform linux/amd64 -t sim-harbor:1.0.3 .
-docker image inspect sim-harbor:1.0.3 --format '{{.Os}}/{{.Architecture}}'
+git checkout --detach v1.0.4
+docker build --platform linux/amd64 -t sim-harbor:1.0.4 .
+docker image inspect sim-harbor:1.0.4 --format '{{.Os}}/{{.Architecture}}'
 ```
 
 尚未发布标签时，也可从已经核对的远端提交构建；记录实际提交 SHA，便于后续对应源码与镜像。
@@ -55,8 +55,8 @@ docker image inspect sim-harbor:1.0.3 --format '{{.Os}}/{{.Architecture}}'
 使用已成功发布的包时：
 
 ```sh
-docker pull ghcr.io/battery233/sim-harbor:1.0.3
-docker buildx imagetools inspect ghcr.io/battery233/sim-harbor:1.0.3
+docker pull ghcr.io/battery233/sim-harbor:1.0.4
+docker buildx imagetools inspect ghcr.io/battery233/sim-harbor:1.0.4
 ```
 
 确认包含目标架构。生产环境可进一步固定镜像清单摘要，使升级和回退目标可追溯。私有包使用具备 `read:packages` 权限的凭据在主机私密登录。
@@ -64,6 +64,14 @@ docker buildx imagetools inspect ghcr.io/battery233/sim-harbor:1.0.3
 ## 已有实例升级
 
 下面沿用[Docker 安装](deployment-docker.md)中的项目名 `sim` 与 `deploy/site.private.yaml`。既有实例按实际参数操作：例如原项目名为 `sim-cloud`、覆盖文件为 `deploy/cloud.private.yaml`，就将下文所有相应参数一并替换为原值。项目名、端口、数据卷和数据目录保持一致。
+
+### 从 v1.0.3 升级到 v1.0.4
+
+v1.0.4 增加[允许分片时间差的组装](protocol-notes.md#允许分片时间差的组装)，数据库从 schema 16 升至 17，以保存各次分片上报与组装记录的关联。沿用原数据卷和配置、更换应用镜像后，新版首次启动会自动完成迁移，无需手工执行 SQL、导入数据库或重新完成迁移确认。
+
+首次运行 v1.0.4 时事务创建关联表，不批量合并、补发或改写历史短信。原数据卷、现有配置与迁移确认继续沿用；有足够分组信息的旧未完成短信，可在收到后续真实分片时完成并按原规则通知。缺少组信息的历史记录保持原状。
+
+升级前保存 schema 16 数据库 ZIP 和私有配置，并保留旧镜像。升级后的 schema 17 不能直接交给 v1.0.2/v1.0.3；回退需保留最新数据后，使用兼容旧版的升级前备份恢复到独立目录，按[数据维护](data-maintenance.md)核对新增业务和恢复外发保护。不要手工修改版本字段或删除关联表来降级。
 
 ### 从 v1.0.2 升级到 v1.0.3
 
@@ -79,7 +87,7 @@ docker buildx imagetools inspect ghcr.io/battery233/sim-harbor:1.0.3
 
 本节说明从 v1.0.1 升级到 v1.0.2，改动见[更新记录](../CHANGELOG.md#102)。新镜像与旧库的兼容性不同，切换前先备份；GHCR 镜像需在对应标签的 Release image 工作流成功后核对并使用，保留 v1.0.1 标签和升级前备份。
 
-从 v1.0.1 直接升级至 v1.0.3 也会经历下述 schema 15 → 16 变化，并同时适用上方的鉴权配置说明。
+从 v1.0.1 直接升级至 v1.0.3 也会经历下述 schema 15 → 16 变化，并同时适用上方的鉴权配置说明。从 v1.0.1 直接升级至 v1.0.4 还会继续迁移到 schema 17，按 v1.0.4 的备份和回退要求操作。
 
 | 操作 | 数据与保护状态 |
 | --- | --- |
@@ -109,7 +117,7 @@ docker buildx imagetools inspect ghcr.io/battery233/sim-harbor:1.0.3
 ```yaml
 services:
   sim:
-    image: sim-harbor:1.0.3
+    image: sim-harbor:1.0.4
 ```
 
 使用 GHCR 时将 image 换成已验证的完整镜像引用。这个文件集中设置发布镜像，端口、配置、数据挂载与运行策略沿用原文件。旧私有文件若固定了 `sim:旧版本`，本文件必须放在最后以使新镜像生效。
@@ -135,7 +143,7 @@ docker compose --env-file .env -p sim \
 
 ### 4. 升级验收
 
-- 容器健康、镜像版本/架构正确；网页或已认证 API 的 `version` 为 `1.0.3`。
+- 容器健康、镜像版本/架构正确；网页或已认证 API 的 `version` 为 `1.0.4`。
 - 数据目录、卷、HTTP/TCP 端口及私有配置未意外变化；历史、卡名称、备注和推送开关保持。
 - 板子重连后查询新鲜状态，确认当前会话、两卡身份和注册情况。
 - 自然到达的短信能入库，按卡通知和点击链接正常；如需 Bark 连接测试，由操作者确认执行。

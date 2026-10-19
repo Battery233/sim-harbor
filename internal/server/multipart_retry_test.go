@@ -53,6 +53,9 @@ func TestTCPMultipartMissingPiecesAndBarkRecoveryOnlyOneJob(t *testing.T) {
 		t.Fatal("partial pushed")
 	}
 	event["smsBdFrag"] = []string{"1,PART-A"}
+	// Different SMS timestamps and reverse part order must still produce one
+	// persisted notification, including after the second timestamp is replayed.
+	event["smsTs"] = 1700000006
 	send(t, board, s.codec(), event)
 	until = time.Now().Add(time.Second)
 	for {

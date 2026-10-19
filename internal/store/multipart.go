@@ -17,8 +17,8 @@ var (
 	ErrSMSFragmentConflict = errors.New("conflicting SMS fragment")
 )
 
-// SMSGroupReference correlates diagnostics across timestamp changes without
-// exposing the group, sender, device or SIM identity. It is never a merge key.
+// SMSGroupReference correlates reports without exposing the group, sender,
+// device or SIM identity. Assembly also verifies identity, time and fragments.
 func SMSGroupReference(e protocol.Event) string {
 	if e.Group == "" {
 		return ""
@@ -102,9 +102,10 @@ func (m *Message) setMultipart(partsJSON, group string) error {
 }
 
 // Metadata lookup only; never changes ingestion, notifications or card data.
-func (s *Store) SMSProgress(ctx context.Context, group string, timestamp int64) (int64, bool, error) {
+func (s *Store) SMSProgress(ctx context.Context, e protocol.Event) (int64, bool, error) {
 	var id int64
 	var complete bool
-	err := s.DB.QueryRowContext(ctx, `SELECT id,complete FROM messages WHERE sms_group_ref=? AND sms_ts=? AND deleted_at=0 ORDER BY id DESC LIMIT 1`, group, timestamp).Scan(&id, &complete)
+	key, legacy := smsBusinessKeys(e)
+	err := s.DB.QueryRowContext(ctx, `SELECT id,complete FROM messages WHERE deleted_at=0 AND (key IN (?,?) OR id=(SELECT message_id FROM sms_receipts WHERE key=?)) ORDER BY (key=?) DESC,id DESC LIMIT 1`, key, legacy, key, key).Scan(&id, &complete)
 	return id, complete, err
 }

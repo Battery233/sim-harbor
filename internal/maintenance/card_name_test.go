@@ -71,7 +71,7 @@ func TestCardNameBackupRestoreAndLegacyMigration(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if _, err := s.DB.Exec(`DELETE FROM schema_version; INSERT INTO schema_version VALUES(?)`, version); err != nil {
+			if _, err := s.DB.Exec(`DROP TABLE sms_receipts; DELETE FROM schema_version; INSERT INTO schema_version VALUES(?)`, version); err != nil {
 				t.Fatal(err)
 			}
 			a, err := Create(ctx, s, t.TempDir())
