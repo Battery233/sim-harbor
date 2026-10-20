@@ -6,6 +6,8 @@ import InfoTip from './InfoTip.vue'
 import {
   createBoardSettingsFlow,
   voicemailApplyNote,
+  voicemailPlan,
+  voicemailSetupSteps,
   voicemailSlotEvidence,
 } from './board-settings-flow.js'
 const props = defineProps({ request: Function, state: Object })
@@ -23,7 +25,13 @@ const seconds = ref(null),
   smsPassword = ref(''),
   smsCost = ref(false),
   stopAuto = ref(false),
-  uncertain = ref(false)
+  uncertain = ref(false),
+  runningVoicemail = ref(null)
+const preview = computed(() =>
+  voicemail.value && voicemailConsent.value
+    ? voicemailPlan(voicemailConsent.value, voicemail.value, runningVoicemail.value)
+    : null,
+)
 const smsReady = computed(
   () =>
     voicemail.value?.channel !== 'sms' ||
@@ -51,6 +59,7 @@ async function query(action) {
       uncertain.value = false
     } else if (action === 'voicemail_query') {
       voicemail.value = r.voicemail
+      runningVoicemail.value = r.running || null
       voicemailConsent.value = ''
       smsPassword.value = ''
       smsCost.value = false
@@ -168,25 +177,34 @@ onUnmounted(() => flow.dispose())
       <h3>
         留言
         <InfoTip label="留言设置说明"
-          >上传地址用 TCP askamrurl / setamrurl。来电方式先试
-          TCP；固件拒绝时，确认后才从该卡槽向它自己的号码发送模式短信。启用不再下发提示音预设，接通后由
-          Harbor
-          发送一次。读取不会发短信。启用前先在系统配置打开留言并重启。录音只在本地部署上传；云端管理台不接收这段录音。恢复会把已配置卡槽改回不接听，并清空仍留在板子上的提示音预设和上传地址。没有控制短信确认时，页面不会把目标来电方式写成已读回，也不会自动重发。</InfoTip
+          >读取走板子连接，不发短信。来电方式在固件不提供查询时，确认后才用短信写入。启用不下发提示音；接通后由运行配置播放一次。协议名、回执类型放在这则说明里，主界面用来电方式、提示音和上传地址。录音只在本地部署上传。云端管理台不接收这段录音。关闭系统配置里的留言开关不会自动停止板子接听。</InfoTip
         >
       </h3>
+      <ol class="voicemail-steps">
+        <li v-for="step in voicemailSetupSteps" :key="step">{{ step }}</li>
+      </ol>
+      <p v-if="state?.environment === 'cloud'" class="notice">
+        云端管理台不接收录音。这里不能当成录音已经可用。
+      </p>
+      <p v-if="state && state.voicemail_enabled !== true" class="notice">
+        运行中的留言服务是关闭的。先到系统配置保存并重启，再回到这里下发。关闭应用开关不会把板子恢复成不接听。
+      </p>
       <button type="button" :disabled="busy || !state?.online" @click="query('voicemail_query')">
         读取留言参数
       </button>
       <template v-if="voicemail">
         <p v-for="slot in voicemail.slots" :key="slot.slot">{{ slotLine(slot) }}</p>
         <p class="tiny muted">上传地址：{{ voicemail.amr_url || '空' }}</p>
+        <p v-if="preview" class="notice">{{ preview.text }}</p>
+        <p v-if="preview?.sendsSMS" class="tiny">
+          预计发送 {{ preview.smsCount }} 条控制短信，也是这次最多的条数。每条都计入该卡的发送限额。
+        </p>
+        <p v-else-if="preview" class="tiny">这次预览里没有控制短信。</p>
         <p v-if="voicemail.channel === 'sms'" class="tiny muted">
-          固件拒绝了 TCP
-          来电方式。读取不会发短信。启用会先核对这张卡当前的本机号码、外发开关和恢复保护，再发送模式短信，可能产生费用。停止自动接听要单独确认；外发被关掉时仍可发送这条停止短信，但不会悄悄当作普通外发。没有控制短信确认时只记为已提交，来电方式保持未知，不会自动重发。若板子上仍有旧的提示音预设，恢复会再发一条清空短信。
+          来电方式不能从板子直接读回。确认后才会向该卡自己的号码发短信，可能产生费用。停止自动接听要单独确认。没有确认回执时，来电方式和提示音保持未知，不会自动重发。
         </p>
         <p v-else class="tiny muted">
-          启用将按已生效的系统配置写入接听并录音和局域网上传地址，不改已有提示音预设。其他卡槽保持刚才读到的值。接通后的提示音由
-          Harbor 发送一次。
+          启用写入接听并录音和局域网上传地址，不改已有提示音。其他卡槽保持刚才读到的值。
         </p>
         <template v-if="voicemail.channel === 'sms'">
           <label

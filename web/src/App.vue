@@ -577,7 +577,7 @@ onUnmounted(() => {
         />
         <Notifications v-if="tab === 'notifications'" :request="api" />
         <Diagnostics v-if="tab === 'diagnostics'" :request="api" />
-        <SystemSettings v-if="tab === 'settings'" :request="api" />
+        <SystemSettings v-if="tab === 'settings'" :request="api" :state="state" />
         <BoardSettings v-if="tab === 'board-settings'" :request="api" :state="state" />
         <section v-show="tab === 'inbox'" class="inbox panel">
           <div class="inbox-heading">

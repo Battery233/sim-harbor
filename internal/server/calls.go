@@ -119,13 +119,13 @@ func (s *Server) downloadVoicemail(w http.ResponseWriter, r *http.Request) {
 	}
 	f, err := os.Open(filepath.Join(s.Config.DataDir, "voicemail", file.Name))
 	if err != nil {
-		reply(w, 404, map[string]string{"error": "not_found"})
+		reply(w, 404, map[string]string{"error": "voicemail_audio_missing"})
 		return
 	}
 	defer f.Close()
 	info, err := f.Stat()
 	if err != nil || info.Size() != file.Size {
-		reply(w, 404, map[string]string{"error": "not_found"})
+		reply(w, 404, map[string]string{"error": "voicemail_audio_missing"})
 		return
 	}
 	w.Header().Set("Content-Type", "audio/amr")

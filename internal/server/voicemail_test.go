@@ -8,6 +8,8 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -223,6 +225,17 @@ func TestVoicemailUploadStoresLinksAndBarksOnce(t *testing.T) {
 	}
 	if open := request(s, "GET", "http://example.com/api/calls/1/voicemail", "", ""); open.Code != 401 {
 		t.Fatal("download without credential", open.Code)
+	}
+	var storedName string
+	if err := s.Store.DB.QueryRow(`SELECT stored_name FROM voicemails`).Scan(&storedName); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(s.Config.DataDir, "voicemail", storedName)); err != nil {
+		t.Fatal(err)
+	}
+	missing := request(s, "GET", "http://example.com/api/calls/1/voicemail", "Bearer "+s.Config.AdminToken, "")
+	if missing.Code != 404 || !strings.Contains(missing.Body.String(), "voicemail_audio_missing") {
+		t.Fatal("index without audio", missing.Code, missing.Body)
 	}
 	board.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
 	if p, err := protocol.NewReader(board).Next(); err == nil {
@@ -454,7 +467,7 @@ func TestVoicemailSMSFallbackWhenSlotCommandsRejected(t *testing.T) {
 	}()
 	answerVoicemailRead(t, board, runtime, reader, "")
 	w := <-done
-	if w.Code != 200 || !strings.Contains(w.Body.String(), `"channel":"sms"`) || !strings.Contains(w.Body.String(), `"mode":null`) {
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"channel":"sms"`) || !strings.Contains(w.Body.String(), `"mode":null`) || !strings.Contains(w.Body.String(), `"enabled":true`) || strings.Contains(w.Body.String(), token) {
 		t.Fatal(w.Code, w.Body)
 	}
 	board.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
@@ -810,37 +823,45 @@ func TestVoicemailGreetingClaimRules(t *testing.T) {
 	connected := protocol.Number(10)
 	zero := protocol.Number(0)
 	ev := protocol.Event{Type: 602, Slot: 2, TelStartTS: 1, TelConnectedTS: &connected}
-	if !s.claimVoicemailGreeting(ev) || s.claimVoicemailGreeting(ev) {
+	if _, ok := s.claimVoicemailGreeting(ev); !ok {
+		t.Fatal("connected call was not claimed")
+	}
+	if _, ok := s.claimVoicemailGreeting(ev); ok {
 		t.Fatal("same connected call claimed twice")
 	}
 	s.Config.VoicemailEnabled = false
 	ev.TelStartTS = 2
-	if s.claimVoicemailGreeting(ev) {
+	if _, ok := s.claimVoicemailGreeting(ev); ok {
 		t.Fatal("disabled slot claimed a greeting")
 	}
 	s.Config.VoicemailEnabled = true
 	ev.TelConnectedTS = &zero
 	ev.TelStartTS = 3
-	if s.claimVoicemailGreeting(ev) {
+	if _, ok := s.claimVoicemailGreeting(ev); ok {
 		t.Fatal("unconnected report claimed a greeting")
 	}
 	ev.Type = 601
 	ev.TelConnectedTS = &connected
 	ev.TelStartTS = 4
-	if s.claimVoicemailGreeting(ev) {
+	if _, ok := s.claimVoicemailGreeting(ev); ok {
 		t.Fatal("ringing claimed a greeting")
 	}
 	ev.Type = 602
 	ev.Slot = 1
 	ev.TelStartTS = 5
-	if s.claimVoicemailGreeting(ev) {
+	if _, ok := s.claimVoicemailGreeting(ev); ok {
 		t.Fatal("unselected slot claimed a greeting")
 	}
 	s.Config.VoicemailTTS = ""
 	ev.Slot = 2
 	ev.TelStartTS = 6
-	if s.claimVoicemailGreeting(ev) {
+	if _, ok := s.claimVoicemailGreeting(ev); ok {
 		t.Fatal("empty greeting claimed")
+	}
+	s.Config.VoicemailTTS = "请在提示音后留言"
+	ev.TelStartTS = 0
+	if _, ok := s.claimVoicemailGreeting(ev); ok {
+		t.Fatal("missing start claimed a greeting")
 	}
 }
 

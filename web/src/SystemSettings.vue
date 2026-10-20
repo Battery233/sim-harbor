@@ -1,8 +1,8 @@
 <script setup>
 import InfoTip from './InfoTip.vue'
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { createSettingsFlow } from './settings-flow.js'
-const props = defineProps({ request: Function })
+import { createSettingsFlow, settingsSavedNote, voicemailServiceStatus } from './settings-flow.js'
+const props = defineProps({ request: Function, state: Object })
 const snapshot = ref(null),
   values = ref({}),
   secrets = ref({}),
@@ -75,6 +75,14 @@ const secretFields = [
   ['admin_token', '管理访问凭据（至少24字符）'],
   ['bark_key', 'Bark Key'],
 ]
+const voicemailStatus = computed(() =>
+  voicemailServiceStatus({
+    savedEnabled: snapshot.value?.values?.voicemail_enabled === true,
+    runningEnabled: props.state ? props.state.voicemail_enabled === true : null,
+    pendingRestart: snapshot.value?.pending_restart === true,
+    environment: props.state?.environment,
+  }),
+)
 const enablingVoicemail = computed(
   () =>
     values.value.voicemail_enabled === true && snapshot.value?.values?.voicemail_enabled !== true,
@@ -155,8 +163,12 @@ async function save() {
       voicemailConsent.value,
     )
     if (data && !stopped) {
+      const turningOff =
+        (snapshot.value?.values?.voicemail_enabled === true ||
+          props.state?.voicemail_enabled === true) &&
+        values.value.voicemail_enabled !== true
       adopt(data)
-      note.value = '配置已保存。确认后重启管理应用使其生效；板子配置不会被自动修改。'
+      note.value = settingsSavedNote(turningOff)
     }
   } catch (e) {
     if (!stopped) {
@@ -225,7 +237,9 @@ onUnmounted(() => {
           >
         </h2>
       </div>
-      <span class="badge">{{ snapshot?.pending_restart ? '已保存，待重启生效' : '当前配置' }}</span>
+      <span class="badge">{{
+        snapshot?.pending_restart ? '配置已保存，待重启后成为运行配置' : '运行配置已生效'
+      }}</span>
     </div>
     <p v-if="error" class="notice error" role="alert">{{ error }}</p>
     <p v-if="note" class="notice" role="status">{{ note }}</p>
@@ -348,56 +362,63 @@ onUnmounted(() => {
           <h3>
             留言（默认关闭）
             <InfoTip label="留言说明">
-              关闭时只记录来电，不接听、不拒接、不拨号。开启并重启后，还需在板子设置确认下发自动接听和上传地址。接通后
-              Harbor
-              向该卡槽发送一次提示音，播完不挂断。这与“只提醒、不接听”互斥，可能产生通话费用。录音上传只在本地部署使用，云端部署不能代替这块能力。上传地址必须是板子能访问的局域网
-              HTTP，不能使用公网域名。接听并录音从接听起就开始，提示音可能和留言在同一段录音里。
+              应用留言服务、已保存配置、运行配置和板子自动接听是四件不同的事。关闭应用开关只停止提示音和录音接收，不向板子下发任何命令。开启并重启后，还要到板子设置确认来电方式和上传地址。接通后播放一次提示音，播完不挂断。这与“只提醒、不接听”互斥，可能产生通话费用。录音只在本地部署使用。上传地址必须是板子能访问的局域网
+              HTTP。
             </InfoTip>
           </h3>
+          <p class="notice">{{ voicemailStatus }}</p>
+          <p class="notice">
+            关闭应用开关不会自动停止板子接听。若已经下发过接听并录音，请到板子设置读取，再确认“恢复为不接听并清除提示音和上传地址”。结果未知时是尚未确认停止自动接听，不会因为应用开关已关就显示成已经停用。
+          </p>
           <label class="consent"
             ><input
               v-model="values.voicemail_enabled"
               type="checkbox"
               @change="voicemailConsent = false"
-            />允许所选卡槽自动接听并留言</label
+            />允许所选卡槽在重启后由应用提供留言服务</label
           >
-          <div class="settings-grid">
-            <label class="consent"
-              ><input
-                type="checkbox"
-                :checked="(values.voicemail_slots || []).includes(1)"
-                @change="toggleVoicemailSlot(1)"
-              />卡槽 1</label
-            >
-            <label class="consent"
-              ><input
-                type="checkbox"
-                :checked="(values.voicemail_slots || []).includes(2)"
-                @change="toggleVoicemailSlot(2)"
-              />卡槽 2</label
-            >
-          </div>
-          <label
-            >接通后播放一次的提示音<textarea
-              v-model="values.voicemail_tts"
-              rows="3"
-              maxlength="274"
-              placeholder="请在提示音后留言"
-            />
-          </label>
-          <label
-            >录音上传地址（局域网 HTTP）<input
-              v-model="values.voicemail_amr_url"
-              type="text"
-              maxlength="500"
-              placeholder="http://192.168.31.10:18880/api/voicemail/amr/…"
-            />
-          </label>
-          <button type="button" @click="fillVoicemailURL">填入局域网模板</button>
-          <p class="tiny muted">
-            把模板里的 x
-            换成这台管理主机的局域网地址，并核对发布端口。保存不会改板子；重启后到“板子设置”读取、确认并读回。
+          <p v-if="!values.voicemail_enabled" class="tiny muted">
+            开关关闭时不展开卡槽、提示音和上传地址。需要开启时再勾选。已经写到板子上的自动接听不会跟着关掉。
           </p>
+          <div v-if="values.voicemail_enabled">
+            <div class="settings-grid">
+              <label class="consent"
+                ><input
+                  type="checkbox"
+                  :checked="(values.voicemail_slots || []).includes(1)"
+                  @change="toggleVoicemailSlot(1)"
+                />卡槽 1</label
+              >
+              <label class="consent"
+                ><input
+                  type="checkbox"
+                  :checked="(values.voicemail_slots || []).includes(2)"
+                  @change="toggleVoicemailSlot(2)"
+                />卡槽 2</label
+              >
+            </div>
+            <label
+              >接通后播放一次的提示音<textarea
+                v-model="values.voicemail_tts"
+                rows="3"
+                maxlength="274"
+                placeholder="请在提示音后留言"
+              />
+            </label>
+            <label
+              >录音上传地址（局域网 HTTP）<input
+                v-model="values.voicemail_amr_url"
+                type="text"
+                maxlength="500"
+                placeholder="http://192.168.31.10:18880/api/voicemail/amr/…"
+              />
+            </label>
+            <button type="button" @click="fillVoicemailURL">填入局域网模板</button>
+            <p class="tiny muted">
+              把模板里的 x
+              换成这台管理主机的局域网地址，并核对发布端口。保存只写入已保存配置，不会改板子。重启后到“板子设置”读取、核对预览并确认。云端页面不表示录音可用。
+            </p>
+          </div>
           <label v-if="enablingVoicemail" class="consent"
             ><input
               v-model="voicemailConsent"

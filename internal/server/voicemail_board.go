@@ -79,7 +79,7 @@ func (s *Server) handleVoicemailBoard(w http.ResponseWriter, r *http.Request, ac
 		return
 	}
 	if action == "voicemail_query" {
-		reply(w, 200, map[string]any{"voicemail": current})
+		reply(w, 200, map[string]any{"voicemail": current, "running": s.voicemailRunning(current)})
 		return
 	}
 	var expected voicemailBoardState
@@ -174,6 +174,18 @@ func (s *Server) handleVoicemailBoard(w http.ResponseWriter, r *http.Request, ac
 		"unchanged":     unchanged,
 		"sms_submitted": written.Sent > 0 && written.Confirmed < written.Steps,
 	})
+}
+
+func (s *Server) voicemailRunning(current voicemailBoardState) map[string]any {
+	slots := []int{}
+	slots = append(slots, s.Config.VoicemailSlots...)
+	return map[string]any{
+		"enabled":        s.Config.VoicemailEnabled,
+		"slots":          slots,
+		"environment":    s.Config.Environment,
+		"url_configured": s.Config.VoicemailAMRURL != "",
+		"url_matches":    s.Config.VoicemailAMRURL != "" && current.AMRURL == s.Config.VoicemailAMRURL,
+	}
 }
 
 func (s *Server) voicemailEnableAllowed(ctx context.Context) string {

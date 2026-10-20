@@ -21,6 +21,7 @@ var catalog = map[string]Definition{
 	"voicemail_sms_submitted":         {"info", "query", "留言短信已交给板子；没有控制短信回报也不判定失败"},
 	"voicemail_greeting":              {"info", "call", "接通后已下发一次 telstarttts；播放一轮且不挂断"},
 	"voicemail_greeting_failed":       {"warn", "call", "接通后的 telstarttts 未被板子接受；不会自动重发"},
+	"voicemail_greeting_skipped":      {"info", "call", "接通提示音未下发：原来电已结束、已被下一通代替、身份不足或连接已变；不会改发到其他来电，也不会自动重试"},
 	"status_alert_observation_failed": {"warn", "notification", "持续异常观察暂时失败"},
 	"card_notifications_changed":      {"info", "notification", "卡通知开关已更新"},
 	"service_started":                 {"info", "service", "应用已启动"},
@@ -75,7 +76,8 @@ var catalog = map[string]Definition{
 
 var outcomes = map[string]bool{
 	"reported_success": true, "reported_failure": true,
-	"device_offline": true, "query_in_progress": true, "device_write_failed": true,
+	"device_offline": true, "device_connection_changed": true, "query_in_progress": true, "device_write_failed": true,
+	"call_ended": true, "call_replaced": true, "call_identity_insufficient": true, "database_unavailable": true,
 	"device_query_failed": true, "device_result_unknown": true, "request_canceled": true,
 	"transport_failed": true, "http_rejected": true, "invalid_response": true,
 	"bark_rejected": true, "accepted": true,

@@ -47,6 +47,8 @@ export function createFileRequest({
           backup_in_progress: '另一份备份正在生成，请稍后。',
           backup_limit_exceeded: '数据库超过当前备份容量上限。',
           backup_confirmation_required: '请确认下载包含私人短信的备份。',
+          voicemail_audio_missing:
+            '留言索引还在，录音文件不在。ZIP 备份不含 AMR。请把单独保存的 voicemail/ 目录放回数据目录后再试。这不是一次完整的录音恢复。',
         }
         throw new Error(messages[code] || '文件未生成，请重新检查服务状态。')
       }

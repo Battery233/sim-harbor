@@ -1,3 +1,31 @@
+export function voicemailServiceStatus({
+  savedEnabled,
+  runningEnabled,
+  pendingRestart,
+  environment,
+}) {
+  const saved = savedEnabled ? '已保存配置：留言服务开。' : '已保存配置：留言服务关。'
+  const running =
+    runningEnabled === true
+      ? '运行配置：留言服务开。'
+      : runningEnabled === false
+        ? '运行配置：留言服务关。'
+        : '运行配置：尚未读取。'
+  const restart = pendingRestart
+    ? '配置已保存，重启后才会成为运行配置。'
+    : '当前没有待重启的已保存变更。'
+  const board =
+    '板子自动接听要到板子设置读取和确认。关闭应用开关不会自动停止板子接听。结果未知时是尚未确认停止自动接听，不是已经停用。'
+  const cloud = environment === 'cloud' ? '云端不接收录音，不能把留言开关当成录音已经可用。' : ''
+  return saved + running + restart + board + cloud
+}
+
+export function settingsSavedNote(turningOffVoicemail) {
+  if (turningOffVoicemail)
+    return '配置已保存，重启后运行配置才会关闭留言服务。这不会停止板子自动接听，也不等于板子参数已确认。请到板子设置读取，并确认恢复为不接听。结果未知时是尚未确认停止自动接听。'
+  return '配置已保存，尚未成为运行配置。重启管理应用后才会生效。板子参数不会被自动修改，也不等于板子参数已确认。'
+}
+
 export const settingsErrors = {
   settings_access_required: '系统配置需要已启用的管理凭据。',
   settings_unavailable: '无法读取或保存私有配置，请保留当前设置并查看运行诊断。',

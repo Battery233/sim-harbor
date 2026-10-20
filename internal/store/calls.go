@@ -218,6 +218,36 @@ func (s *Store) Calls(ctx context.Context, card, q string, before, now int64) ([
 	return out, rows.Err()
 }
 
+// AnsweredCallStillCurrent reports whether this slot is still on the same
+// answered call. A later call, an ended call, or more than one match is not
+// safe to treat as that call.
+func (s *Store) AnsweredCallStillCurrent(ctx context.Context, device string, slot int, start, connected int64) (string, error) {
+	if device == "" || (slot != 1 && slot != 2) || start <= 0 || connected <= 0 {
+		return "call_identity_insufficient", nil
+	}
+	var n, ended int
+	var state string
+	err := s.DB.QueryRowContext(ctx, `SELECT count(*), coalesce(max(ended),0), coalesce(max(state),'') FROM calls WHERE device_id=? AND slot=? AND start_ts=? AND connected_ts=?`, device, slot, start, connected).Scan(&n, &ended, &state)
+	if err != nil {
+		return "", err
+	}
+	if n != 1 {
+		return "call_identity_insufficient", nil
+	}
+	if ended != 0 || state == "missed" {
+		return "call_ended", nil
+	}
+	var latest int64
+	err = s.DB.QueryRowContext(ctx, `SELECT coalesce(max(start_ts),0) FROM calls WHERE device_id=? AND slot=? AND ended=0`, device, slot).Scan(&latest)
+	if err != nil {
+		return "", err
+	}
+	if latest != start {
+		return "call_replaced", nil
+	}
+	return "", nil
+}
+
 func (s *Store) Call(ctx context.Context, id, now int64) (Call, error) {
 	return scanCall(s.DB.QueryRowContext(ctx, `SELECT `+callColumns+callJoin+` WHERE c.id=?`, id), now)
 }

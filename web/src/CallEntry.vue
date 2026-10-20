@@ -59,7 +59,10 @@ function date(ts) {
         {{ playLabel() }}
       </button>
       <button type="button" @click="onDownload(call)">下载 AMR</button>
-      <span class="muted">{{ call.voicemail_bytes }} 字节。网页内解码播放，下载仍是原始 AMR。</span>
+      <span class="muted"
+        >{{ call.voicemail_bytes }} 字节。下载仍是原始
+        AMR。若提示录音文件不在，说明只恢复了索引，需要把 voicemail/ 目录单独放回。</span
+      >
     </p>
     <p class="tiny" :class="{ 'call-push-sent': call.notification_state === 'sent' }">
       {{ callPushLabel(call)

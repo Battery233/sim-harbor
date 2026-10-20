@@ -294,13 +294,12 @@ func (s *Server) handle(ctx context.Context, c net.Conn) {
 			}
 		}
 		sess.mu.Unlock()
-		if s.claimVoicemailGreeting(e) {
+		if job, ok := s.claimVoicemailGreeting(e); ok {
 			text := s.Config.VoicemailTTS
-			slot := int(e.Slot)
 			s.wg.Add(1)
 			go func() {
 				defer s.wg.Done()
-				s.playVoicemailGreeting(sess, slot, text)
+				s.playVoicemailGreeting(sess, job, text)
 			}()
 		}
 	}
@@ -386,6 +385,10 @@ func (s *Server) Handler() http.Handler {
 		state["stale_seconds"] = s.Config.StaleSeconds
 		state["status_refresh_seconds"] = int(s.statusRefreshInterval() / time.Second)
 		state["environment"] = s.Config.Environment
+		state["voicemail_enabled"] = s.Config.VoicemailEnabled
+		slots := []int{}
+		slots = append(slots, s.Config.VoicemailSlots...)
+		state["voicemail_slots"] = slots
 		state["version"] = version.Version
 		state["bark_enabled"] = s.Config.BarkKey != ""
 		alerts, err := s.Store.StatusAlertSummary(r.Context())
