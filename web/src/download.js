@@ -7,7 +7,7 @@ export function createFileRequest({
   fetcher = fetch,
   timeout = 60000,
 }) {
-  return async (path, method = 'GET', body) => {
+  return async (path, method = 'GET', body, options = {}) => {
     const credential = getCredential()
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), timeout)
@@ -47,16 +47,23 @@ export function createFileRequest({
           backup_in_progress: '另一份备份正在生成，请稍后。',
           backup_limit_exceeded: '数据库超过当前备份容量上限。',
           backup_confirmation_required: '请确认下载包含私人短信的备份。',
+          voicemail_audio_missing:
+            '留言索引还在，录音文件不在。ZIP 备份不含 AMR。请把单独保存的 voicemail/ 目录放回数据目录后再试。这不是一次完整的录音恢复。',
         }
         throw new Error(messages[code] || '文件未生成，请重新检查服务状态。')
       }
       const type = response.headers.get('Content-Type')?.split(';')[0].trim()
-      if (!['application/json', 'text/csv', 'application/zip'].includes(type))
-        throw new Error('文件响应类型无效。')
+      const allowed = options.types || ['application/json', 'text/csv', 'application/zip']
+      if (!allowed.includes(type)) throw new Error('文件响应类型无效。')
       if (!response.headers.get('Content-Disposition')?.startsWith('attachment;'))
         throw new Error('文件响应不完整。')
       const length = response.headers.get('Content-Length')
-      const max = type === 'application/zip' ? 272 * 1024 * 1024 : 32 * 1024 * 1024
+      const max =
+        Number.isSafeInteger(options.max) && options.max > 0
+          ? options.max
+          : type === 'application/zip'
+            ? 272 * 1024 * 1024
+            : 32 * 1024 * 1024
       if (!length || !/^\d+$/.test(length) || Number(length) > max)
         throw new Error('文件大小无效。')
       const reader = response.body.getReader()

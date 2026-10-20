@@ -38,6 +38,18 @@ func TestCredentialFreeHostBoundaryAndAuthenticatedDomain(t *testing.T) {
 	}
 }
 
+func TestContentSecurityPolicyAllowsVoicemailWasm(t *testing.T) {
+	s, _ := fixture(t, 0)
+	r := httptest.NewRequest("GET", "/api/health", nil)
+	r.Host = "127.0.0.1:8080"
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, r)
+	csp := w.Header().Get("Content-Security-Policy")
+	if !strings.Contains(csp, "script-src 'self' 'wasm-unsafe-eval'") || strings.Contains(csp, "'unsafe-eval'") {
+		t.Fatal(csp)
+	}
+}
+
 func TestInboxExportRefusesConcurrentGenerationAndReleasesGate(t *testing.T) {
 	s, _ := fixture(t, 0)
 	s.exportGate.Lock()

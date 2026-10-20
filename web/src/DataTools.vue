@@ -52,7 +52,8 @@ async function backup() {
   failed.value = false
   try {
     if (await flow.run('/backups/download', 'sim-backup.zip', 'POST', { confirmed: true }))
-      notice.value = '备份已交给浏览器下载。恢复前需使用本应用校验，恢复仅写入全新目录并阻止外发。'
+      notice.value =
+        '备份已交给浏览器下载。ZIP 不含留言录音。恢复前需使用本应用校验，恢复仅写入全新目录并阻止外发。录音请另行保存 voicemail/ 目录。'
   } catch (e) {
     failed.value = true
     notice.value = e.message
@@ -125,6 +126,11 @@ async function backup() {
           :disabled="busy"
         />我确认下载并妥善保管私人数据备份</label
       >
+      <p class="notice">
+        下载前请知悉：ZIP 包含数据库、留言索引和控制短信账本，不包含 voicemail/ 里的 AMR
+        录音。需要保留录音时，请另行复制数据目录中的 voicemail/，恢复数据库后再放回同名目录。只恢复
+        ZIP 不会带回录音文件，也不要把完成提示理解成录音已保存。应用配置和凭据仍需另行保管。
+      </p>
       <div class="outgoing-actions">
         <button :disabled="busy || !backupConsent" @click="backup">
           {{ busy ? '正在生成文件…' : '生成并下载备份' }}

@@ -74,16 +74,26 @@ func (s *Server) settingsRoutes(mux *http.ServeMux) {
 			return
 		}
 		var input struct {
-			Values    config.Config        `json:"values"`
-			Secrets   config.SecretChanges `json:"secrets"`
-			Revision  string               `json:"revision"`
-			Confirmed bool                 `json:"confirmed"`
+			Values             config.Config        `json:"values"`
+			Secrets            config.SecretChanges `json:"secrets"`
+			Revision           string               `json:"revision"`
+			Confirmed          bool                 `json:"confirmed"`
+			VoicemailConfirmed bool                 `json:"voicemail_confirmed"`
 		}
 		if !settingsJSON(w, r, &input) {
 			return
 		}
 		if !input.Confirmed {
 			reply(w, 400, map[string]string{"error": "settings_confirmation_required"})
+			return
+		}
+		current, err := s.Settings.Snapshot()
+		if err != nil {
+			settingsError(w, err)
+			return
+		}
+		if !current.Values.VoicemailEnabled && input.Values.VoicemailEnabled && !input.VoicemailConfirmed {
+			reply(w, 400, map[string]string{"error": "voicemail_confirmation_required"})
 			return
 		}
 		snap, err := s.Settings.Save(input.Values, input.Secrets, input.Revision)

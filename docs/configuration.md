@@ -49,6 +49,10 @@
 | `stale_seconds` | 最近上报超过此时限视为不新鲜，示例 345 秒 |
 | `incoming_text_escapes` | 可选的正文转义显示兼容；原文与导出保留原始内容 |
 | `status_alerts_enabled` | 持续异常与恢复提醒，需 Bark 可用 |
+| `voicemail_enabled` | 留言开关，默认关闭。开启需网页二次确认并重启；板子参数另在“板子设置”下发。见[留言](voicemail.md) |
+| `voicemail_slots` | 允许自动接听并录音的卡槽，取 1 和/或 2 |
+| `voicemail_tts` | 接通后由 Harbor 用 TCP `telstarttts` 播放一次的提示音，最长 274 个字符。启用确认不把这段文字写成板子预设 |
+| `voicemail_amr_url` | 板子可访问的局域网 HTTP 上传地址，须带端口和路径令牌 |
 | `outbound_enabled` | 短信外发开关，默认关闭；恢复保护优先 |
 | `send_interval_seconds` | 每卡发送间隔，默认 60 秒，可配置 10～86400 秒 |
 | `send_daily_limit` | 每卡每日尝试次数上限，默认 5 次，可配置 1～100 次 |
@@ -83,7 +87,7 @@ X-SIMHarbor-Authorization: Bearer <管理token>
 
 本改动不升级数据库。旧版 v1.0.2 不识别新配置字段；如需回退，先在本版中清空该设置、保存并重启以恢复默认鉴权，确保初始化 JSON 也不包含 `admin_token_header`，再使用旧版镜像。清空后，统一配置不再写入该字段；凭据及其他配置保持原值。
 
-外发限额按发送尝试记录计算，未知结果也计入，日期按 `device_timezone` 划分；实际值以当前配置为准。可根据套餐与使用习惯设置限额，详见[短信外发](features.md#短信外发)。
+外发限额按发送尝试记录计算，未知结果也计入。留言控制短信与普通外发共用同一张卡的间隔和每日额度。日期按 `device_timezone` 划分；实际值以当前配置为准。可根据套餐与使用习惯设置限额，详见[短信外发](features.md#短信外发)。
 
 ## 端口与来源
 

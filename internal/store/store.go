@@ -84,6 +84,10 @@ func Open(path string) (*Store, error) {
 		db.Close()
 		return nil, e
 	}
+	if e = s.reconcileVoicemails(time.Now().Unix()); e != nil {
+		db.Close()
+		return nil, e
+	}
 	return s, nil
 }
 
@@ -220,8 +224,21 @@ DELETE FROM schema_version; INSERT INTO schema_version VALUES(6);`); e != nil {
 			return e
 		}
 	}
-	if version.Int64 < 17 {
+	if version.Int64 < 18 {
+		// v1.0.4 published schema 17 for sms_receipts. Earlier builds of this
+		// branch used 17 for voicemail, so a database at 17 may lack either
+		// table. Receipts stay 17; voicemail objects are added as 18.
 		if _, e = tx.Exec(smsReceiptSchema); e != nil {
+			return e
+		}
+		if e = migrateVoicemail(tx); e != nil {
+			return e
+		}
+	}
+	if version.Int64 < 19 {
+		// The control ledger is created even when voicemail stays off. It records
+		// paid setup SMS without the password or the command body.
+		if e = migrateVoicemailControls(tx); e != nil {
 			return e
 		}
 	}
@@ -237,7 +254,7 @@ DELETE FROM schema_version; INSERT INTO schema_version VALUES(6);`); e != nil {
 }
 func hash(p []byte) string { h := sha256.Sum256(p); return hex.EncodeToString(h[:]) }
 
-func (s *Store) Ingest(ctx context.Context, e protocol.Event, raw []byte, notify bool) error {
+func (s *Store) Ingest(ctx context.Context, e protocol.Event, raw []byte, notify bool, voicemailSlots ...int) error {
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -269,7 +286,16 @@ func (s *Store) Ingest(ctx context.Context, e protocol.Event, raw []byte, notify
 		}
 	}
 	if protocol.IsIncomingCall(e.Type) {
-		if err = ingestCall(ctx, tx, e, raw, notify, now); err != nil {
+		voicemail := false
+		for _, slot := range voicemailSlots {
+			if slot == int(e.Slot) {
+				voicemail = true
+			}
+		}
+		if err = ingestCall(ctx, tx, e, raw, notify, now, voicemail); err != nil {
+			return err
+		}
+		if err = relinkVoicemails(ctx, tx, int(e.Slot), now); err != nil {
 			return err
 		}
 	}

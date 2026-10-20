@@ -23,7 +23,12 @@ export function ringingLabel(call) {
 }
 
 export function callPushLabel(call) {
-  const fallback = call?.notification_kind === 'timeout' ? ' · 兜底提醒' : ''
+  const fallback =
+    call?.notification_kind === 'timeout'
+      ? ' · 兜底提醒'
+      : call?.notification_kind === 'voicemail'
+        ? ' · 留言'
+        : ''
   return (
     ({
       sent: '推送成功',
@@ -43,7 +48,11 @@ function checkedCall(call, id) {
     (id && call.id !== id) ||
     ![1, 2].includes(call.slot) ||
     typeof call.phone !== 'string' ||
-    !Object.hasOwn(callStates, call.state)
+    !Object.hasOwn(callStates, call.state) ||
+    (call.voicemail_id != null &&
+      (!Number.isSafeInteger(call.voicemail_id) || call.voicemail_id <= 0)) ||
+    (call.voicemail_bytes != null &&
+      (!Number.isSafeInteger(call.voicemail_bytes) || call.voicemail_bytes <= 0))
   )
     throw new Error('来电记录内容不完整，请重新读取。')
   return call

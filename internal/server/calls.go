@@ -1,12 +1,20 @@
 package server
 
 import (
+	"database/sql"
+	"errors"
+	"io"
 	"net/http"
+	"os"
+	"path/filepath"
+	"regexp"
 	"strconv"
 	"time"
 
 	"github.com/Battery233/sim-harbor/internal/store"
 )
+
+var voicemailFileName = regexp.MustCompile(`^[0-9a-f]{32}\.amr$`)
 
 func (s *Server) callRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/call-groups", func(w http.ResponseWriter, r *http.Request) {
@@ -74,6 +82,7 @@ func (s *Server) callRoutes(mux *http.ServeMux) {
 		}
 		reply(w, 200, map[string]any{"items": calls, "next_before": next})
 	})
+	mux.HandleFunc("GET /api/calls/{id}/voicemail", s.downloadVoicemail)
 	mux.HandleFunc("GET /api/calls/{id}", func(w http.ResponseWriter, r *http.Request) {
 		id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 		if err != nil || id <= 0 {
@@ -87,6 +96,43 @@ func (s *Server) callRoutes(mux *http.ServeMux) {
 		}
 		reply(w, 200, call)
 	})
+}
+
+func (s *Server) downloadVoicemail(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil || id <= 0 {
+		reply(w, 400, map[string]string{"error": "invalid_id"})
+		return
+	}
+	file, err := s.Store.VoicemailFile(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			reply(w, 404, map[string]string{"error": "not_found"})
+			return
+		}
+		reply(w, 503, map[string]string{"error": "database_unavailable"})
+		return
+	}
+	if !voicemailFileName.MatchString(file.Name) || file.Size <= 0 || file.Size > 2<<20 {
+		reply(w, 404, map[string]string{"error": "not_found"})
+		return
+	}
+	f, err := os.Open(filepath.Join(s.Config.DataDir, "voicemail", file.Name))
+	if err != nil {
+		reply(w, 404, map[string]string{"error": "voicemail_audio_missing"})
+		return
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil || info.Size() != file.Size {
+		reply(w, 404, map[string]string{"error": "voicemail_audio_missing"})
+		return
+	}
+	w.Header().Set("Content-Type", "audio/amr")
+	w.Header().Set("Content-Disposition", "attachment; filename=\"voicemail-"+strconv.FormatInt(id, 10)+".amr\"")
+	w.Header().Set("Content-Length", strconv.FormatInt(file.Size, 10))
+	w.WriteHeader(http.StatusOK)
+	io.Copy(w, f)
 }
 
 func callCursor(r *http.Request) (int64, error) {

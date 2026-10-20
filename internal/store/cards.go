@@ -39,6 +39,10 @@ func cardIdentity(value string) string {
 	}
 	return value
 }
+
+// ConfirmableSIM returns a SIM identity that can be checked against a control
+// or call. Empty, oversized, and control-character values are not confirmable.
+func ConfirmableSIM(value string) string { return cardIdentity(value) }
 func ValidCardFilter(value string) bool {
 	if value == "" || value == "unknown" {
 		return true

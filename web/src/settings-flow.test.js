@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { createSettingsFlow } from './settings-flow.js'
+import { createSettingsFlow, settingsSavedNote, voicemailServiceStatus } from './settings-flow.js'
 const snapshot = (pending = false, revision = 'a'.repeat(64)) => ({
   values: { log_level: 'info' },
   revision,
@@ -63,6 +63,7 @@ test('保存成功仅标待重启，不自动重启或发短信', async () => {
   assert.equal(calls.length, 1)
   assert.equal(calls[0][0], '/settings')
   assert.equal(calls[0][2].confirmed, true)
+  assert.equal(calls[0][2].voicemail_confirmed, false)
 })
 test('重启须再次确认，丢失响应不补发；恢复后可重新编辑', async () => {
   const calls = []
@@ -99,4 +100,27 @@ test('配置页面关闭后丢弃旧响应，不保存凭据到浏览器存储',
   assert.equal(await task, null)
   await assert.rejects(flow.restart('a'.repeat(64), true))
   assert.equal(calls.length, 1)
+})
+test('关闭应用留言不会被写成板子已经停止自动接听', () => {
+  const off = voicemailServiceStatus({
+    savedEnabled: false,
+    runningEnabled: true,
+    pendingRestart: true,
+    environment: 'local',
+  })
+  assert.match(off, /已保存配置：留言服务关/)
+  assert.match(off, /运行配置：留言服务开/)
+  assert.match(off, /配置已保存，重启后才会成为运行配置/)
+  assert.match(off, /尚未确认停止自动接听/)
+  assert.match(off, /不是已经停用/)
+  assert.doesNotMatch(off, /板子参数已确认|已经恢复不接听/)
+  const cloud = voicemailServiceStatus({
+    savedEnabled: false,
+    runningEnabled: false,
+    pendingRestart: false,
+    environment: 'cloud',
+  })
+  assert.match(cloud, /云端不接收录音/)
+  assert.match(settingsSavedNote(true), /不会停止板子自动接听/)
+  assert.match(settingsSavedNote(false), /不等于板子参数已确认/)
 })

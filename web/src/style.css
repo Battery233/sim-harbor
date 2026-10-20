@@ -1048,6 +1048,16 @@ button.danger {
   padding: 22px 27px;
   border-bottom: 1px solid #edf0e8;
 }
+.voicemail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+}
+.voicemail-actions button {
+  padding: 4px 10px;
+  font-size: 12px;
+}
 .call-row .detail-head {
   gap: 12px;
   flex-wrap: wrap;
@@ -1152,12 +1162,19 @@ button.danger {
 .settings-group {
   margin-top: 28px;
 }
+.voicemail-steps {
+  margin: 8px 0 16px;
+  padding-left: 1.2em;
+}
+.voicemail-steps li {
+  margin: 4px 0;
+}
 .settings-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 18px;
 }
-.settings-grid label,
+.settings-grid label:not(.consent),
 .settings-group > label:not(.consent) {
   display: flex;
   flex-direction: column;

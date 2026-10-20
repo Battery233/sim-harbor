@@ -1,7 +1,18 @@
 <script setup>
 import { messageSource } from './inbox-cards.js'
 import { callStates, callerLabel, ringingLabel, callPushLabel } from './call-history.js'
-defineProps({ call: Object, cards: Array, highlighted: Boolean })
+const props = defineProps({
+  call: Object,
+  cards: Array,
+  highlighted: Boolean,
+  onDownload: Function,
+  onPlay: Function,
+  playback: Object,
+})
+function playLabel() {
+  if (props.playback?.id !== props.call.id) return '播放留言'
+  return props.playback.phase === 'playing' ? '停止播放' : '取消播放'
+}
 function date(ts) {
   return ts ? new Date(ts * 1000).toLocaleString('zh-CN', { hour12: false }) : '未报告'
 }
@@ -42,6 +53,16 @@ function date(ts) {
     </p>
     <p v-if="!call.started_at && call.received_at" class="tiny muted">
       最近报告收到于 {{ date(call.received_at) }}，这不是已确认的来电开始时间。
+    </p>
+    <p v-if="call.voicemail_id" class="tiny voicemail-actions">
+      <button type="button" :aria-pressed="playback?.id === call.id" @click="onPlay(call)">
+        {{ playLabel() }}
+      </button>
+      <button type="button" @click="onDownload(call)">下载 AMR</button>
+      <span class="muted"
+        >{{ call.voicemail_bytes }} 字节。下载仍是原始
+        AMR。若提示录音文件不在，说明只恢复了索引，需要把 voicemail/ 目录单独放回。</span
+      >
     </p>
     <p class="tiny" :class="{ 'call-push-sent': call.notification_state === 'sent' }">
       {{ callPushLabel(call)

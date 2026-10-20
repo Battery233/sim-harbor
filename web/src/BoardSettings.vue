@@ -3,16 +3,42 @@ import { ref, watch, computed, onUnmounted } from 'vue'
 import BoardHistory from './BoardHistory.vue'
 import { boardStatusView } from './board-history-flow.js'
 import InfoTip from './InfoTip.vue'
-import { createBoardSettingsFlow } from './board-settings-flow.js'
+import {
+  createBoardSettingsFlow,
+  voicemailApplyNote,
+  voicemailPlan,
+  voicemailSetupSteps,
+  voicemailSlotEvidence,
+} from './board-settings-flow.js'
 const props = defineProps({ request: Function, state: Object })
 const seconds = ref(null),
   target = ref(110),
   storage = ref(null),
+  voicemail = ref(null),
   busy = ref(false),
   error = ref(''),
   note = ref(''),
   consent = ref(false),
-  uncertain = ref(false)
+  voicemailConsent = ref(''),
+  smsPhone1 = ref(''),
+  smsPhone2 = ref(''),
+  smsPassword = ref(''),
+  smsCost = ref(false),
+  stopAuto = ref(false),
+  uncertain = ref(false),
+  runningVoicemail = ref(null)
+const preview = computed(() =>
+  voicemail.value && voicemailConsent.value
+    ? voicemailPlan(voicemailConsent.value, voicemail.value, runningVoicemail.value)
+    : null,
+)
+const smsReady = computed(
+  () =>
+    voicemail.value?.channel !== 'sms' ||
+    ((smsPhone1.value.trim() !== '' || smsPhone2.value.trim() !== '') &&
+      smsPassword.value !== '' &&
+      smsCost.value),
+)
 const showIdentity = ref(false),
   historyOpen = ref(false)
 const rawStatus = computed(() =>
@@ -31,12 +57,57 @@ async function query(action) {
       seconds.value = r.seconds
       target.value = r.seconds
       uncertain.value = false
+    } else if (action === 'voicemail_query') {
+      voicemail.value = r.voicemail
+      runningVoicemail.value = r.running || null
+      voicemailConsent.value = ''
+      smsPassword.value = ''
+      smsCost.value = false
+      stopAuto.value = false
+      uncertain.value = false
     } else storage.value = r.storage
   } catch (e) {
     error.value = e.message
   } finally {
     busy.value = false
   }
+}
+async function applyVoicemail(intent) {
+  if (voicemailConsent.value !== intent || !preview.value?.ready) return
+  busy.value = true
+  error.value = ''
+  note.value = ''
+  try {
+    const phones = {}
+    if (smsPhone1.value.trim()) phones[1] = smsPhone1.value.trim()
+    if (smsPhone2.value.trim()) phones[2] = smsPhone2.value.trim()
+    const sms =
+      voicemail.value?.channel === 'sms'
+        ? {
+            phones,
+            password: smsPassword.value,
+            costConfirmed: smsCost.value,
+            stopAutoAnswer: intent === 'restore' && stopAuto.value,
+          }
+        : undefined
+    const r = await flow.applyVoicemail(intent, voicemail.value, true, sms)
+    if (r) {
+      voicemail.value = r.voicemail
+      smsPassword.value = ''
+      smsCost.value = false
+      stopAuto.value = false
+      note.value = voicemailApplyNote(intent, r)
+    }
+  } catch (e) {
+    error.value = e.message + ' 请先重新查询，不要重复提交。'
+    uncertain.value = true
+  } finally {
+    busy.value = false
+    voicemailConsent.value = ''
+  }
+}
+function slotLine(slot) {
+  return voicemailSlotEvidence(slot, voicemail.value?.channel)
 }
 async function save() {
   busy.value = true
@@ -101,6 +172,98 @@ onUnmounted(() => flow.dispose())
           确认修改一次
         </button>
       </form>
+    </div>
+    <div class="settings-group">
+      <h3>
+        留言
+        <InfoTip label="留言设置说明"
+          >读取走板子连接，不发短信。来电方式在固件不提供查询时，确认后才用短信写入。启用不下发提示音；接通后由运行配置播放一次。协议名、回执类型放在这则说明里，主界面用来电方式、提示音和上传地址。录音只在本地部署上传。云端管理台不接收这段录音。关闭系统配置里的留言开关不会自动停止板子接听。</InfoTip
+        >
+      </h3>
+      <ol class="voicemail-steps">
+        <li v-for="step in voicemailSetupSteps" :key="step">{{ step }}</li>
+      </ol>
+      <p v-if="state?.environment === 'cloud'" class="notice">
+        云端管理台不接收录音。这里不能当成录音已经可用。
+      </p>
+      <p v-if="state && state.voicemail_enabled !== true" class="notice">
+        运行中的留言服务是关闭的。启用前先到系统配置保存并重启；仍可在这里读取并恢复板子为不接听。关闭应用开关不会自动停止板子接听。
+      </p>
+      <button type="button" :disabled="busy || !state?.online" @click="query('voicemail_query')">
+        读取留言参数
+      </button>
+      <template v-if="voicemail">
+        <p v-for="slot in voicemail.slots" :key="slot.slot">{{ slotLine(slot) }}</p>
+        <p class="tiny muted">上传地址：{{ voicemail.amr_url || '空' }}</p>
+        <p v-if="preview" class="notice">{{ preview.text }}</p>
+        <p v-if="preview?.sendsSMS" class="tiny">
+          预计发送 {{ preview.smsCount }} 条控制短信，也是这次最多的条数。每条都计入该卡的发送限额。
+        </p>
+        <p v-else-if="preview" class="tiny">这次预览里没有控制短信。</p>
+        <p v-if="voicemail.channel === 'sms'" class="tiny muted">
+          来电方式不能从板子直接读回。确认后才会向该卡自己的号码发短信，可能产生费用。停止自动接听要单独确认。没有确认回执时，来电方式和提示音保持未知，不会自动重发。
+        </p>
+        <p v-else-if="voicemailConsent === 'enable'" class="tiny muted">
+          启用写入接听并录音和局域网上传地址，不改已有提示音。其他卡槽保持刚才读到的值。
+        </p>
+        <template v-if="voicemail.channel === 'sms'">
+          <label
+            >卡槽 1 本机号码<input v-model="smsPhone1" autocomplete="off" inputmode="tel"
+          /></label>
+          <label
+            >卡槽 2 本机号码<input v-model="smsPhone2" autocomplete="off" inputmode="tel"
+          /></label>
+          <label
+            >用户密码<input v-model="smsPassword" type="password" autocomplete="new-password"
+          /></label>
+          <label class="consent"
+            ><input
+              v-model="smsCost"
+              type="checkbox"
+              :disabled="busy || uncertain"
+            />我知道控制短信会占用该卡短信并可能产生费用</label
+          >
+          <label v-if="voicemailConsent === 'restore'" class="consent"
+            ><input
+              v-model="stopAuto"
+              type="checkbox"
+              :disabled="busy || uncertain"
+            />我确认停止自动接听。外发关闭或恢复保护未解除时，仍只发送这条停止短信</label
+          >
+        </template>
+        <label class="consent"
+          ><input
+            v-model="voicemailConsent"
+            type="radio"
+            value="enable"
+            :disabled="busy || uncertain"
+          />确认启用留言</label
+        >
+        <label class="consent"
+          ><input
+            v-model="voicemailConsent"
+            type="radio"
+            value="restore"
+            :disabled="busy || uncertain"
+          />确认恢复为不接听并清除提示音和上传地址</label
+        >
+        <button
+          type="button"
+          class="primary"
+          :disabled="
+            busy ||
+            uncertain ||
+            !voicemailConsent ||
+            !preview?.ready ||
+            !smsReady ||
+            !state?.online ||
+            (voicemail.channel === 'sms' && voicemailConsent === 'restore' && !stopAuto)
+          "
+          @click="applyVoicemail(voicemailConsent)"
+        >
+          确认下发一次
+        </button>
+      </template>
     </div>
     <div class="settings-group">
       <h3>
