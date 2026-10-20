@@ -4,6 +4,8 @@
 
 以下使用 Compose、Python 3 和本机构建镜像，方便从源码开始部署。Linux 需要 Docker Engine 与 Compose 插件；macOS 可使用 Docker Desktop。安装方法见 [Docker 官方文档](https://docs.docker.com/get-started/get-docker/)，安装后先用 `docker version` 和 `docker compose version` 确认可用。安装目录可按自己的习惯选择。使用局域网端口覆盖示例时，Compose 需为 2.24.4 或更新版本。
 
+当前源码和镜像示例为候选版 `1.1.1-rc.1`。稳定部署可选择 `v1.1.0` 标签对应的源码或已发布镜像；候选版的试用与兼容性见[版本维护](releases.md#从-v110-试用-v111-rc1)。
+
 ## 1. 获取源码
 
 ```sh
@@ -31,7 +33,7 @@ values = {
     'SIM_AES_KEY': secrets.token_urlsafe(12),
     'SIM_AES_IV': secrets.token_urlsafe(12),
     'SIM_BARK_KEY': '',
-    'SIM_IMAGE': 'sim-harbor:1.1.0',
+    'SIM_IMAGE': 'sim-harbor:1.1.1-rc.1',
     'SIM_HTTP_PORT': '18880',
     'SIM_DEVICE_BIND': '127.0.0.1',
     'SIM_DEVICE_PORT': '39090',

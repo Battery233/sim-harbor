@@ -134,11 +134,11 @@ onUnmounted(() => flow.dispose())
     <h2>
       板子设置
       <InfoTip label="板子设置说明"
-        >这里通过板子的正式TCP连接读取或修改参数，与管理应用的系统配置不同。不会自动修改WiFi、启用SIM流量或重启板子。写入结果未知先查询，不重复下发。</InfoTip
+        >这里读取或修改板子本身的设置。应用端的选项请到“系统配置”修改。操作不会自动修改WiFi、启用SIM流量或重启板子。结果不明时先重新读取，不要重复操作。</InfoTip
       >
     </h2>
     <p v-if="error" class="notice error" role="alert">{{ error }}</p>
-    <p v-if="note" class="notice" role="status">{{ note }}</p>
+    <p v-if="note" class="notice voicemail-preview" role="status">{{ note }}</p>
     <div class="settings-group">
       <h3>
         板子心跳间隔
@@ -175,36 +175,39 @@ onUnmounted(() => flow.dispose())
     </div>
     <div class="settings-group">
       <h3>
-        留言
+        板子自动接听与录音
         <InfoTip label="留言设置说明"
-          >读取走板子连接，不发短信。来电方式在固件不提供查询时，确认后才用短信写入。启用不下发提示音；接通后由运行配置播放一次。协议名、回执类型放在这则说明里，主界面用来电方式、提示音和上传地址。录音只在本地部署上传。云端管理台不接收这段录音。关闭系统配置里的留言开关不会自动停止板子接听。</InfoTip
+          >这里修改板子是否自动接听、录音，以及向哪里上传。读取设置不会发短信；修改时部分固件需要发送设置短信，会计入短信额度。提示语由应用在接通后播放一次，开启时不写入板子。仅关闭应用留言服务不会撤销板子设置。</InfoTip
         >
       </h3>
-      <ol class="voicemail-steps">
+      <ol v-if="state?.environment !== 'cloud'" class="voicemail-steps">
         <li v-for="step in voicemailSetupSteps" :key="step">{{ step }}</li>
       </ol>
       <p v-if="state?.environment === 'cloud'" class="notice">
-        云端管理台不接收录音。这里不能当成录音已经可用。
+        当前是云端部署，不支持接收录音。请保持应用留言关闭；如板子已开启自动接听，可在这里停止。
       </p>
-      <p v-if="state && state.voicemail_enabled !== true" class="notice">
-        运行中的留言服务是关闭的。启用前先到系统配置保存并重启；仍可在这里读取并恢复板子为不接听。关闭应用开关不会自动停止板子接听。
+      <p
+        v-if="state && state.voicemail_enabled !== true && state.environment !== 'cloud'"
+        class="notice"
+      >
+        应用留言服务当前未开启。要接收录音，请先到“系统配置”开启、保存并重启。停止板子自动接听不受影响。
       </p>
       <button type="button" :disabled="busy || !state?.online" @click="query('voicemail_query')">
-        读取留言参数
+        读取板子留言设置
       </button>
       <template v-if="voicemail">
         <p v-for="slot in voicemail.slots" :key="slot.slot">{{ slotLine(slot) }}</p>
-        <p class="tiny muted">上传地址：{{ voicemail.amr_url || '空' }}</p>
-        <p v-if="preview" class="notice">{{ preview.text }}</p>
+        <p class="tiny muted">板子录音上传地址：{{ voicemail.amr_url || '未设置' }}</p>
+        <p v-if="preview" class="notice voicemail-preview">{{ preview.text }}</p>
         <p v-if="preview?.sendsSMS" class="tiny">
-          预计发送 {{ preview.smsCount }} 条控制短信，也是这次最多的条数。每条都计入该卡的发送限额。
+          本次最多发送 {{ preview.smsCount }} 条设置短信，可能产生费用，并计入对应卡的发送额度。
         </p>
-        <p v-else-if="preview" class="tiny">这次预览里没有控制短信。</p>
+        <p v-else-if="preview" class="tiny">本次操作无需发送设置短信。</p>
         <p v-if="voicemail.channel === 'sms'" class="tiny muted">
-          来电方式不能从板子直接读回。确认后才会向该卡自己的号码发短信，可能产生费用。停止自动接听要单独确认。没有确认回执时，来电方式和提示音保持未知，不会自动重发。
+          这块板子无法直接读回来电方式，需要向该卡自己的号码发短信修改。短信已发出不等于设置已生效；未收到确认时会显示“待确认”，不会自动重发。
         </p>
         <p v-else-if="voicemailConsent === 'enable'" class="tiny muted">
-          启用写入接听并录音和局域网上传地址，不改已有提示音。其他卡槽保持刚才读到的值。
+          仅修改预览列出的卡槽。板子会自动接听并录音，提示语由应用在接通后播放。
         </p>
         <template v-if="voicemail.channel === 'sms'">
           <label
@@ -214,21 +217,24 @@ onUnmounted(() => flow.dispose())
             >卡槽 2 本机号码<input v-model="smsPhone2" autocomplete="off" inputmode="tel"
           /></label>
           <label
-            >用户密码<input v-model="smsPassword" type="password" autocomplete="new-password"
+            >板子管理密码<input v-model="smsPassword" type="password" autocomplete="new-password"
           /></label>
           <label class="consent"
             ><input
               v-model="smsCost"
               type="checkbox"
               :disabled="busy || uncertain"
-            />我知道控制短信会占用该卡短信并可能产生费用</label
+            />我同意发送设置短信，并了解可能产生费用</label
           >
           <label v-if="voicemailConsent === 'restore'" class="consent"
             ><input
               v-model="stopAuto"
               type="checkbox"
               :disabled="busy || uncertain"
-            />我确认停止自动接听。外发关闭或恢复保护未解除时，仍只发送这条停止短信</label
+            />我确认停止板子自动接听
+            <InfoTip label="停止自动接听的短信说明"
+              >即使普通短信外发关闭或恢复保护尚未解除，仍允许发送本次停用所需的设置短信；不会因此开放普通短信外发。</InfoTip
+            ></label
           >
         </template>
         <label class="consent"
@@ -237,7 +243,7 @@ onUnmounted(() => flow.dispose())
             type="radio"
             value="enable"
             :disabled="busy || uncertain"
-          />确认启用留言</label
+          />开启板子自动接听和录音</label
         >
         <label class="consent"
           ><input
@@ -245,7 +251,7 @@ onUnmounted(() => flow.dispose())
             type="radio"
             value="restore"
             :disabled="busy || uncertain"
-          />确认恢复为不接听并清除提示音和上传地址</label
+          />停止自动接听，清除板子提示语和上传地址</label
         >
         <button
           type="button"
@@ -261,7 +267,7 @@ onUnmounted(() => flow.dispose())
           "
           @click="applyVoicemail(voicemailConsent)"
         >
-          确认下发一次
+          确认执行一次
         </button>
       </template>
     </div>

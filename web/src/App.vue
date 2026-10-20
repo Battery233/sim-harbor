@@ -53,13 +53,12 @@ let credential = access.read(),
 const errors = {
   ...settingsErrors,
   invalid_board_action: '不支持此操作，或心跳值超过安全范围；请先核对参数。',
-  voicemail_disabled: '留言尚未在当前运行配置中启用。请先保存并重启应用。',
+  voicemail_disabled: '应用留言服务尚未开启。请先在“系统配置”开启、保存并重启应用。',
   voicemail_sms_required:
-    '这块固件不接受 TCP 来电方式。请按卡槽填写本机号码和用户密码后再确认。两张卡要分别填写。',
-  sms_cost_required: '请确认这条控制短信会占用该卡短信并可能产生费用。',
-  stop_auto_answer_required:
-    '停止自动接听需要单独确认。这不是普通外发，也不会在未确认时绕过外发限制。',
-  control_already_dispatched: '这条控制短信可能已经发出。结果未知时不会自动重发。',
+    '这块板子需要用短信修改接听方式。请分别填写所选卡槽的本机号码和板子管理密码，再确认费用。',
+  sms_cost_required: '请先勾选设置短信的费用确认。',
+  stop_auto_answer_required: '请勾选“我确认停止板子自动接听”，再确认执行。',
+  control_already_dispatched: '这条设置短信可能已经发出。请先读取设置，不要重复发送。',
   card_number_mismatch: '填写的号码和这块卡当前的本机号码不一致，已阻止发送。',
   voicemail_sms_rejected:
     '板子没有接受短信指令。请核对用户密码；密码错误时 30 分钟内可能不再回复。上传地址可能已经写入，请重新读取后再确认。',

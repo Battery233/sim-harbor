@@ -4,26 +4,23 @@ export function voicemailServiceStatus({
   pendingRestart,
   environment,
 }) {
-  const saved = savedEnabled ? '已保存配置：留言服务开。' : '已保存配置：留言服务关。'
+  const saved = savedEnabled ? '已保存：开启。' : '已保存：关闭。'
   const running =
     runningEnabled === true
-      ? '运行配置：留言服务开。'
+      ? '当前生效：开启。'
       : runningEnabled === false
-        ? '运行配置：留言服务关。'
-        : '运行配置：尚未读取。'
-  const restart = pendingRestart
-    ? '配置已保存，重启后才会成为运行配置。'
-    : '当前没有待重启的已保存变更。'
-  const board =
-    '板子自动接听要到板子设置读取和确认。关闭应用开关不会自动停止板子接听。结果未知时是尚未确认停止自动接听，不是已经停用。'
-  const cloud = environment === 'cloud' ? '云端不接收录音，不能把留言开关当成录音已经可用。' : ''
+        ? '当前生效：关闭。'
+        : '当前生效状态尚未读取。'
+  const restart = pendingRestart ? '有配置等待重启应用后生效。' : ''
+  const board = '板子是否接听，请到“板子设置”读取确认。'
+  const cloud = environment === 'cloud' ? '云端暂不支持接收录音，请保持关闭。' : ''
   return saved + running + restart + board + cloud
 }
 
 export function settingsSavedNote(turningOffVoicemail) {
   if (turningOffVoicemail)
-    return '配置已保存，重启后运行配置才会关闭留言服务。这不会停止板子自动接听，也不等于板子参数已确认。请到板子设置读取，并确认恢复为不接听。结果未知时是尚未确认停止自动接听。'
-  return '配置已保存，尚未成为运行配置。重启管理应用后才会生效。板子参数不会被自动修改，也不等于板子参数已确认。'
+    return '已保存。重启应用后，将停止播放提示语和接收新录音。板子仍可能自动接听；请到“板子设置”读取并执行停止操作，确认结果。'
+  return '已保存，重启应用后生效。板子设置不会随之改变。'
 }
 
 export const settingsErrors = {
@@ -31,7 +28,7 @@ export const settingsErrors = {
   settings_unavailable: '无法读取或保存私有配置，请保留当前设置并查看运行诊断。',
   settings_conflict: '配置已被其他页面修改，请重新读取后核对。',
   settings_confirmation_required: '请先核对配置并勾选确认。',
-  voicemail_confirmation_required: '开启留言需要单独确认：所选卡槽会自动接听并录音。',
+  voicemail_confirmation_required: '请勾选留言确认，了解自动接听录音可能产生通话费用。',
   invalid_settings:
     '配置未通过校验：请核对地址、白名单、AES长度、管理凭据长度、鉴权请求头名称和数值范围。',
   settings_restart_unavailable: '当前运行入口不支持网页重启。',

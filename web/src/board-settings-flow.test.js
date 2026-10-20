@@ -177,14 +177,14 @@ test('短信通道分别接受来电方式和提示音，TCP 仍要求完整读�
   assert.equal(applied.voicemail.slots[0].tts, null)
   assert.equal(
     voicemailSlotEvidence(partial.slots[0], 'sms'),
-    '卡槽 1：接听并录音 · 提示音预设尚未确认',
+    '卡槽 1：接听并录音 · 板子提示语尚未确认',
   )
   assert.equal(
     voicemailSlotEvidence(known[1].slots[0], 'sms'),
-    '卡槽 1：来电方式尚未确认 · 板子上仍有提示音预设',
+    '卡槽 1：接听方式尚未确认 · 板子上有已保存的提示语',
   )
   assert.match(voicemailApplyNote('restore', applied), /尚未确认停止自动接听/)
-  assert.match(voicemailApplyNote('restore', applied), /卡槽 1：来电方式已确认，提示音仍待核对/)
+  assert.match(voicemailApplyNote('restore', applied), /卡槽 1：接听方式已确认，板子提示语待确认/)
   assert.match(voicemailApplyNote('restore', applied), /不会自动重发/)
   assert.match(
     voicemailApplyNote('restore', {
@@ -193,7 +193,7 @@ test('短信通道分别接受来电方式和提示音，TCP 仍要求完整读�
       sms_submitted: false,
       url_verified: true,
     }),
-    /没有重发已经记录的控制短信，不会自动重发/,
+    /未重复发送之前已提交的设置短信，不会自动重发/,
   )
   assert.match(
     voicemailApplyNote('restore', {
@@ -201,11 +201,11 @@ test('短信通道分别接受来电方式和提示音，TCP 仍要求完整读�
       sms_submitted: true,
       submission: 'submitted',
     }),
-    /短信已提交，参数仍待核对，不会自动重发/,
+    /设置短信已提交，尚未确认生效，不会自动重发/,
   )
   assert.match(
     voicemailApplyNote('restore', { ...applied, sms_submitted: true }),
-    /板子已接受短信，参数仍待核对，不会自动重发/,
+    /板子已接受设置短信，尚未确认生效，不会自动重发/,
   )
   assert.match(
     voicemailApplyNote('restore', {
@@ -214,7 +214,7 @@ test('短信通道分别接受来电方式和提示音，TCP 仍要求完整读�
       submission: 'verified',
       sms_submitted: false,
     }),
-    /控制短信已确认，整体参数仍待核对/,
+    /设置短信已确认，其他设置仍待核对/,
   )
   const broken = [
     slots({ slot: 1, mode: '2', tts: null }, { slot: 2, mode: null, tts: null }),
@@ -253,7 +253,7 @@ test('板子设置结果不完整不声称成功，不支持任意命令', async
   assert.equal(await flow.set(120, 110, true), null)
 })
 test('启用和恢复预览按卡槽给出短信条数，且不含密码或原始指令', () => {
-  assert.equal(voicemailSetupSteps.length, 5)
+  assert.equal(voicemailSetupSteps.length, 3)
   const unknown = {
     channel: 'sms',
     amr_url: 'http://192.168.31.10:18880/api/voicemail/amr/abcd',
@@ -276,7 +276,7 @@ test('启用和恢复预览按卡槽给出短信条数，且不含密码或原�
   })
   assert.equal(both.smsCount, 2)
   assert.equal(both.clearsTTS, false)
-  assert.match(both.text, /不清空、也不下发提示音/)
+  assert.match(both.text, /保留板子原有提示语/)
   const tcp = voicemailPlan(
     'enable',
     { ...unknown, channel: 'tcp' },
@@ -304,7 +304,7 @@ test('启用和恢复预览按卡槽给出短信条数，且不含密码或原�
   assert.equal(idle.smsCount, 0)
   assert.equal(idle.clearsTTS, false)
   assert.equal(idle.clearsURL, false)
-  assert.match(idle.text, /云端不接收录音/)
+  assert.match(idle.text, /云端暂不支持接收录音/)
   const encoded = JSON.stringify(voicemailPlan('restore', unknown, { enabled: true, slots: [2] }))
   assert.doesNotMatch(encoded, /000000|\*#slot|sms_password/)
   const notRunning = voicemailPlan('enable', unknown, {
@@ -315,7 +315,7 @@ test('启用和恢复预览按卡槽给出短信条数，且不含密码或原�
   })
   assert.equal(notRunning.smsCount, 0)
   assert.equal(notRunning.ready, false)
-  assert.match(notRunning.text, /这次不会下发/)
+  assert.match(notRunning.text, /不会执行修改/)
   assert.doesNotMatch(notRunning.text, /会发送/)
   const noURL = voicemailPlan('enable', unknown, {
     enabled: true,
@@ -324,8 +324,8 @@ test('启用和恢复预览按卡槽给出短信条数，且不含密码或原�
     url_configured: false,
   })
   assert.equal(noURL.smsCount, 0)
-  assert.match(noURL.text, /还没有局域网上传地址/)
-  assert.match(voicemailPlan('enable', unknown, { enabled: false, slots: [] }).text, /不会下发/)
+  assert.match(noURL.text, /尚未设置接收录音的局域网地址/)
+  assert.match(voicemailPlan('enable', unknown, { enabled: false, slots: [] }).text, /不会执行修改/)
 })
 
 test('关闭应用且未选卡槽时，TCP 恢复预览列出实际恢复范围', () => {
@@ -344,10 +344,10 @@ test('关闭应用且未选卡槽时，TCP 恢复预览列出实际恢复范围'
   assert.equal(plan.clearsTTS, true)
   assert.equal(plan.clearsURL, true)
   assert.equal(plan.smsCount, 0)
-  assert.match(plan.text, /卡槽 1：当前来电方式接听并录音，目标不接听/)
-  assert.match(plan.text, /卡槽 1：提示音仍有内容，会清空/)
-  assert.match(plan.text, /上传地址不是空，会清空/)
-  assert.doesNotMatch(plan.text, /这次不会下发|卡槽 2：/)
+  assert.match(plan.text, /卡槽 1：接听并录音 → 不接听/)
+  assert.match(plan.text, /卡槽 1：板子提示语有已保存的内容，将清除/)
+  assert.match(plan.text, /上传地址：清空/)
+  assert.doesNotMatch(plan.text, /不会执行修改|卡槽 2：/)
 
   // Configured slots still restrict recovery; do not expand to the other slot.
   const configured = voicemailPlan('restore', observed, { ...running, slots: [2] })
@@ -358,7 +358,7 @@ test('关闭应用且未选卡槽时，TCP 恢复预览列出实际恢复范围'
   const cloud = voicemailPlan('restore', observed, { ...running, environment: 'cloud' })
   assert.equal(cloud.ready, true)
   assert.deepEqual(cloud.slots, [1])
-  assert.match(cloud.text, /云端不接收录音，仍可恢复板子为不接听/)
+  assert.match(cloud.text, /云端暂不支持接收录音，仍可停止板子自动接听/)
 })
 
 test('TCP 无卡槽恢复仍可单独清空上传地址，已恢复的卡槽不重复修改', () => {
@@ -377,13 +377,13 @@ test('TCP 无卡槽恢复仍可单独清空上传地址，已恢复的卡槽不�
   assert.equal(urlOnly.clearsURL, true)
   assert.equal(urlOnly.clearsTTS, false)
   assert.equal(urlOnly.smsCount, 0)
-  assert.doesNotMatch(urlOnly.text, /这次不会下发|卡槽 [12]：/)
+  assert.doesNotMatch(urlOnly.text, /不会执行修改|卡槽 [12]：/)
 
   const unchanged = voicemailPlan('restore', { ...observed, amr_url: '' }, running)
   assert.equal(unchanged.ready, true)
   assert.deepEqual(unchanged.slots, [])
   assert.equal(unchanged.clearsURL, false)
-  assert.match(unchanged.text, /上传地址已空，不重复清空/)
+  assert.match(unchanged.text, /上传地址：已为空，无需修改/)
 
   const presetOnly = voicemailPlan(
     'restore',
@@ -410,6 +410,6 @@ test('没有运行配置或短信通道未选卡槽时，恢复预览不可执�
     assert.equal(plan.clearsTTS, false)
     assert.equal(plan.smsCount, 0)
     assert.deepEqual(plan.slots, [])
-    assert.match(plan.text, /这次不会下发上传地址/)
+    assert.match(plan.text, /本次不修改上传地址/)
   }
 })

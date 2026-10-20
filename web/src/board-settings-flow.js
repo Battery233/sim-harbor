@@ -121,31 +121,29 @@ export function voicemailSlotEvidence(slot, channel) {
   const sms = channel === 'sms'
   if (slot?.mode == null && slot?.tts == null)
     return sms
-      ? `卡槽 ${slot.slot}：TCP 未返回来电方式 · 提示音预设尚未确认`
-      : `卡槽 ${slot.slot}：TCP 未返回来电方式`
+      ? `卡槽 ${slot.slot}：接听方式和板子提示语尚未确认`
+      : `卡槽 ${slot.slot}：未读到接听方式和板子提示语`
   const mode =
     slot.mode == null
       ? sms
-        ? '来电方式尚未确认'
-        : '来电方式未返回'
-      : names[slot.mode] || '来电方式待核对'
+        ? '接听方式尚未确认'
+        : '接听方式未读到'
+      : names[slot.mode] || '接听方式待核对'
   const preset =
     slot.tts == null
       ? sms
-        ? '提示音预设尚未确认'
-        : '提示音预设未读取'
+        ? '板子提示语尚未确认'
+        : '板子提示语未读到'
       : slot.tts
-        ? '板子上仍有提示音预设'
-        : '提示音预设为空'
+        ? '板子上有已保存的提示语'
+        : '板子未保存提示语'
   return `卡槽 ${slot.slot}：${mode} · ${preset}`
 }
 
 export const voicemailSetupSteps = [
-  '系统配置里保存卡槽、提示音和局域网地址。这只是已保存配置。',
-  '重启管理应用。重启之后才是运行配置。',
-  '到板子设置读取留言参数。读取不会发短信。',
-  '核对下面的预览，再确认下发。短信通道还要确认费用；停止自动接听要单独确认。',
-  '按证据看结果：已提交、板子已接受、参数已确认、仍待核对，不是同一个状态。',
+  '首次开启：先到“系统配置”填写留言选项，保存并重启应用。',
+  '读取板子设置，再选择开启或停止自动接听。读取不会发短信。',
+  '核对修改内容和费用后确认执行。结果未确认时，先重新读取，不要重复操作。',
 ]
 
 export function voicemailPlan(intent, observed, running) {
@@ -156,9 +154,9 @@ export function voicemailPlan(intent, observed, running) {
     : []
   const cloud = running?.environment === 'cloud'
   const held = []
-  if (!running) held.push('还没有运行配置，不能预计短信条数。')
+  if (!running) held.push('尚未读到应用设置，请重新读取。本次不会执行修改。')
   if (intent === 'enable' && running && running.enabled !== true)
-    held.push('运行中的留言服务仍是关闭的。请先在系统配置保存并重启。这不表示板子已经恢复不接听。')
+    held.push('应用留言服务尚未开启。请先到“系统配置”开启、保存并重启。本次不会执行修改。')
   // Match voicemailTarget: TCP restore can recover the observed board even
   // after the application has been disabled and its configured slots cleared.
   const inferRestoreSlots = intent === 'restore' && channel === 'tcp' && configured.length === 0
@@ -168,12 +166,12 @@ export function voicemailPlan(intent, observed, running) {
         .map((slot) => slot.slot)
     : configured
   if (configured.length === 0 && running && !inferRestoreSlots)
-    held.push('运行配置没有选中卡槽，这次不会下发。')
+    held.push('应用尚未选定留言卡槽。本次不会执行修改。')
   if (intent === 'enable' && running && running.url_configured === false)
-    held.push('运行配置还没有局域网上传地址，这次不会下发。')
-  if (cloud && intent === 'enable') held.push('云端不接收录音，不能启用留言录音。')
+    held.push('应用尚未设置接收录音的局域网地址。本次不会执行修改。')
+  if (cloud && intent === 'enable') held.push('云端暂不支持接收录音，不能开启。')
   const blocked = held.concat(
-    cloud && intent === 'restore' ? ['云端不接收录音，仍可恢复板子为不接听。'] : [],
+    cloud && intent === 'restore' ? ['云端暂不支持接收录音，仍可停止板子自动接听。'] : [],
   )
   const willWrite = held.length === 0
   let smsCount = 0
@@ -181,7 +179,7 @@ export function voicemailPlan(intent, observed, running) {
   let clearsURL = false
   const lines = []
   if (willWrite && inferRestoreSlots)
-    lines.push('运行配置没有选中卡槽，恢复范围按刚才读回的板子参数确定。')
+    lines.push('应用未选定留言卡槽，将按刚才读到的板子设置确定停用范围。')
   for (const number of touched) {
     const slot = (observed?.slots || []).find((item) => item.slot === number) || {
       slot: number,
@@ -194,14 +192,16 @@ export function voicemailPlan(intent, observed, running) {
     const currentMode = modeKnown ? names[slot.mode] || '待核对' : '未知'
     if (willWrite && channel === 'sms' && modeNeeds) smsCount += 1
     lines.push(
-      `卡槽 ${number}：当前来电方式${currentMode}，目标${names[target]}。${
+      `卡槽 ${number}：${currentMode} → ${names[target]}。${
         !willWrite
-          ? '这次不会下发。'
+          ? '本次不会修改。'
           : channel === 'sms'
             ? modeNeeds
-              ? '会发送 1 条来电方式短信。'
-              : '来电方式已是目标值，不重复发送。'
-            : '来电方式走板子连接，不发短信。'
+              ? '需发送 1 条设置短信。'
+              : '已是目标状态，不重复发送。'
+            : modeNeeds
+              ? '通过设备连接修改，不发短信。'
+              : '已是目标状态，无需修改。'
       }`,
     )
     if (intent === 'restore') {
@@ -209,29 +209,35 @@ export function voicemailPlan(intent, observed, running) {
       if (willWrite && ttsNeeds) clearsTTS = true
       if (willWrite && channel === 'sms' && ttsNeeds) smsCount += 1
       const ttsLine =
-        slot.tts == null ? '未知，仍会尝试清空' : slot.tts ? '仍有内容，会清空' : '已空，不重复清空'
+        slot.tts == null
+          ? '未读到，将尝试清除'
+          : slot.tts
+            ? '有已保存的内容，将清除'
+            : '已为空，无需修改'
       lines.push(
-        !willWrite ? `卡槽 ${number}：提示音这次不会下发。` : `卡槽 ${number}：提示音${ttsLine}。`,
+        !willWrite
+          ? `卡槽 ${number}：本次不修改板子提示语。`
+          : `卡槽 ${number}：板子提示语${ttsLine}。`,
       )
-    } else {
-      lines.push(`卡槽 ${number}：这次启用不清空、也不下发提示音。接通后由运行配置播放一次。`)
     }
   }
+  if (intent === 'enable' && willWrite)
+    lines.push('提示语：保留板子原有提示语，应用会在接通后播放一次系统配置中的提示语。')
   if (intent === 'restore') {
     clearsURL = willWrite && (observed?.amr_url || '') !== ''
     lines.push(
       !willWrite
-        ? '这次不会下发上传地址。'
+        ? '本次不修改上传地址。'
         : clearsURL
-          ? '上传地址不是空，会清空。这不是短信。'
-          : '上传地址已空，不重复清空。',
+          ? '上传地址：清空，通过设备连接修改，不发短信。'
+          : '上传地址：已为空，无需修改。',
     )
   } else if (!willWrite) {
-    lines.push('这次不会写入上传地址。')
+    lines.push('本次不修改上传地址。')
   } else if (running?.url_matches === true) {
-    lines.push('上传地址已与运行配置一致，不重复写入。')
+    lines.push('上传地址：与应用设置一致，无需修改。')
   } else if (running) {
-    lines.push('上传地址与运行配置不一致或尚未配置，会按运行配置写入局域网地址。这不是短信。')
+    lines.push('上传地址：改为应用设置中的局域网地址，不发短信。')
   }
   const summary = blocked.concat(lines)
   return {
@@ -243,35 +249,35 @@ export function voicemailPlan(intent, observed, running) {
     clearsURL,
     slots: touched,
     cloud,
-    text: summary.join(''),
+    text: summary.join('\n'),
   }
 }
 
 export function voicemailApplyNote(intent, result) {
   if (result?.verified === true) {
-    if (result.unchanged) return '板子留言参数已与目标一致，未下发修改。'
+    if (result.unchanged) return '板子设置已符合本次选择，无需修改。'
     return intent === 'enable'
-      ? '板子参数已确认。来电方式和上传地址已读回。'
-      : '板子参数已确认。已恢复为不接听，并读回确认。'
+      ? '已确认：目标卡槽已开启自动接听和录音，上传地址已核对。'
+      : '已确认：目标卡槽为不接听，板子提示语和上传地址已清除。'
   }
-  const url = result?.url_verified ? '上传地址已读回' : '上传地址仍待核对'
+  const url = result?.url_verified ? '上传地址已确认' : '上传地址待确认'
   const fields = (result?.voicemail?.slots || []).map((slot) => {
-    const mode = slot.mode == null ? '来电方式仍待核对' : '来电方式已确认'
-    const tts = slot.tts == null ? '提示音仍待核对' : '提示音已确认'
+    const mode = slot.mode == null ? '接听方式待确认' : '接听方式已确认'
+    const tts = slot.tts == null ? '板子提示语待确认' : '板子提示语已确认'
     return `卡槽 ${slot.slot}：${mode}，${tts}`
   })
-  let lead = '短信已提交，参数仍待核对，不会自动重发。'
-  if (result?.submission === 'accepted') lead = '板子已接受短信，参数仍待核对，不会自动重发。'
-  if (result?.submission === 'verified') lead = '控制短信已确认，整体参数仍待核对，不会自动重发。'
+  let lead = '设置短信已提交，尚未确认生效，不会自动重发。'
+  if (result?.submission === 'accepted') lead = '板子已接受设置短信，尚未确认生效，不会自动重发。'
+  if (result?.submission === 'verified') lead = '设置短信已确认，其他设置仍待核对，不会自动重发。'
   // A false flag means nothing new was sent. Confirmed or accepted evidence stays visible.
   if (
     result?.sms_submitted === false &&
     result?.submission !== 'accepted' &&
     result?.submission !== 'verified'
   )
-    lead = '没有重发已经记录的控制短信，不会自动重发。'
+    lead = '未重复发送之前已提交的设置短信，不会自动重发。'
   if (intent === 'restore') lead = `尚未确认停止自动接听。${lead}`
-  return `${lead}${url}。${fields.join('；')}。`
+  return [lead, `${url}。`, ...fields.map((field) => `${field}。`)].join('\n')
 }
 
 function checkedVoicemail(value) {

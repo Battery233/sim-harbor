@@ -233,12 +233,12 @@ onUnmounted(() => {
         <h2>
           系统配置
           <InfoTip label="系统配置说明"
-            >这里修改的是管理应用的参数，不是板子的内部设置；保存不会向板子下发配置命令。参数和凭据保存在同一个私有文件，确认重启应用后生效，短信与来电历史保留。</InfoTip
+            >这里修改应用的设置，保存并重启应用后生效，短信与来电历史保留。板子是否自动接听、录音，需要到“板子设置”另行修改。</InfoTip
           >
         </h2>
       </div>
       <span class="badge">{{
-        snapshot?.pending_restart ? '配置已保存，待重启后成为运行配置' : '运行配置已生效'
+        snapshot?.pending_restart ? '配置已保存，重启应用后生效' : '当前配置已生效'
       }}</span>
     </div>
     <p v-if="error" class="notice error" role="alert">{{ error }}</p>
@@ -360,25 +360,25 @@ onUnmounted(() => {
         <div class="settings-group">
           <h3>业务选项</h3>
           <h3>
-            留言（默认关闭）
+            应用留言服务（默认关闭）
             <InfoTip label="留言说明">
-              应用留言服务、已保存配置、运行配置和板子自动接听是四件不同的事。关闭应用开关只停止提示音和录音接收，不向板子下发任何命令。开启并重启后，还要到板子设置确认来电方式和上传地址。接通后播放一次提示音，播完不挂断。这与“只提醒、不接听”互斥，可能产生通话费用。录音只在本地部署使用。上传地址必须是板子能访问的局域网
-              HTTP。
+              开启后，应用会在电话接通时让板子播放一次提示语，并接收、保存录音。保存并重启应用后生效；板子的自动接听需要到“板子设置”另行开启。自动接听可能产生通话费用。
             </InfoTip>
           </h3>
+          <p class="tiny muted">接通后播放提示语，并接收、保存录音。仅支持本地部署。</p>
           <p class="notice">{{ voicemailStatus }}</p>
           <p class="notice">
-            关闭应用开关不会自动停止板子接听。若已经下发过接听并录音，请到板子设置读取，再确认“恢复为不接听并清除提示音和上传地址”。结果未知时是尚未确认停止自动接听，不会因为应用开关已关就显示成已经停用。
+            关闭并重启应用后，不再播放提示语或接收新录音；板子仍可能接听、录音和尝试上传。要彻底停用，请到“板子设置”停止自动接听，并清除提示语和上传地址。
           </p>
           <label class="consent"
             ><input
               v-model="values.voicemail_enabled"
               type="checkbox"
               @change="voicemailConsent = false"
-            />允许所选卡槽在重启后由应用提供留言服务</label
+            />开启应用留言服务（保存并重启后生效）</label
           >
           <p v-if="!values.voicemail_enabled" class="tiny muted">
-            开关关闭时不展开卡槽、提示音和上传地址。需要开启时再勾选。已经写到板子上的自动接听不会跟着关掉。
+            需要留言时，勾选后填写下方选项。已有录音不会因关闭服务而删除。
           </p>
           <div v-if="values.voicemail_enabled">
             <div class="settings-grid">
@@ -398,7 +398,7 @@ onUnmounted(() => {
               >
             </div>
             <label
-              >接通后播放一次的提示音<textarea
+              >给来电者播放的提示语<textarea
                 v-model="values.voicemail_tts"
                 rows="3"
                 maxlength="274"
@@ -406,24 +406,24 @@ onUnmounted(() => {
               />
             </label>
             <label
-              >录音上传地址（局域网 HTTP）<input
+              >接收录音的局域网地址（HTTP）<input
                 v-model="values.voicemail_amr_url"
                 type="text"
                 maxlength="500"
                 placeholder="http://192.168.31.10:18880/api/voicemail/amr/…"
               />
             </label>
-            <button type="button" @click="fillVoicemailURL">填入局域网模板</button>
+            <button type="button" @click="fillVoicemailURL">生成上传地址模板</button>
             <p class="tiny muted">
-              把模板里的 x
-              换成这台管理主机的局域网地址，并核对发布端口。保存只写入已保存配置，不会改板子。重启后到“板子设置”读取、核对预览并确认。云端页面不表示录音可用。
+              提示语接通后只播放一遍，播完不挂断。把地址模板中的 x
+              换成运行本应用的主机局域网地址，并核对端口。保存并重启后，再到“板子设置”开启自动接听和录音。
             </p>
           </div>
           <label v-if="enablingVoicemail" class="consent"
             ><input
               v-model="voicemailConsent"
               type="checkbox"
-            />我确认开启留言：所选卡槽会自动接听并录音，可能产生通话费用，且不再只做未接提醒。</label
+            />我了解：完成板子设置后，所选卡槽会自动接听并录音，可能产生通话费用，不再只做未接提醒。</label
           >
           <label class="consent"
             ><input v-model="values.status_alerts_enabled" type="checkbox" />持续异常与恢复提醒
@@ -467,7 +467,7 @@ onUnmounted(() => {
           ><input
             v-model="consent"
             type="checkbox"
-          />我已核对参数、凭据和费用限制；保存不会立即切换运行配置。</label
+          />我已核对参数、凭据和费用限制，了解保存后还需重启应用。</label
         >
         <button class="primary" :disabled="!canSave">{{ busy ? '处理中…' : '保存配置' }}</button>
       </fieldset>
