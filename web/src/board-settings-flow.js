@@ -151,7 +151,11 @@ export function voicemailApplyNote(intent, result) {
     const tts = slot.tts == null ? '提示音预设尚未确认' : '提示音预设已有确认'
     return `卡槽 ${slot.slot}：${mode}，${tts}`
   })
-  return `短信已提交，不会自动重发。${url}。${fields.join('；')}。`
+  const lead =
+    result?.sms_submitted === false
+      ? '没有重发已经记录的控制短信，不会自动重发。'
+      : '短信已提交，不会自动重发。'
+  return `${lead}${url}。${fields.join('；')}。`
 }
 
 function checkedVoicemail(value) {

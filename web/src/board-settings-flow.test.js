@@ -186,6 +186,14 @@ test('短信通道分别接受来电方式和提示音，TCP 仍要求完整读�
     /卡槽 1：来电方式已有确认，提示音预设尚未确认/,
   )
   assert.match(voicemailApplyNote('restore', applied), /不会自动重发/)
+  assert.match(
+    voicemailApplyNote('restore', { ...applied, sms_submitted: false, url_verified: true }),
+    /没有重发已经记录的控制短信，不会自动重发/,
+  )
+  assert.match(
+    voicemailApplyNote('restore', { ...applied, sms_submitted: true }),
+    /短信已提交，不会自动重发/,
+  )
   const broken = [
     slots({ slot: 1, mode: '2', tts: null }, { slot: 2, mode: null, tts: null }),
     slots({ slot: 1, mode: 1.5, tts: null }, { slot: 2, mode: null, tts: null }),

@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"net"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -348,6 +349,285 @@ func TestControlReplyMatchesSourceSlotAndSIM(t *testing.T) {
 	var state string
 	if err := runtime.Store.DB.QueryRow(`SELECT state FROM voicemail_controls`).Scan(&state); err != nil || state != "accepted" {
 		t.Fatal(state, err)
+	}
+}
+
+func TestRestoreAfterEnableSendsClearTTSAndURL(t *testing.T) {
+	const phone, password, iccid = "13800138000", "000000", "SYNTHETIC-ICC-2"
+	runtime, board, reader, done := startControlBoard(t)
+	url := runtime.Config.VoicemailAMRURL
+	go func() {
+		done <- action(runtime, "/board/parameters", controlApply("restore", smsBoard(""), phone, password))
+	}()
+	serveRestore(t, board, runtime, reader, "", "", []controlSMS{{"*#slot2cim#" + password + "#0", "设备(SYNTHETIC) 卡槽2 设置为来电 不接听"}, {"*#slot2tts#" + password + "#", "设备(SYNTHETIC)卡槽2的自动语音，已经取消。"}})
+	w := <-done
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"verified":true`) || !strings.Contains(w.Body.String(), `"mode":0`) || !strings.Contains(w.Body.String(), `"tts":""`) || !strings.Contains(w.Body.String(), `"sms_submitted":false`) {
+		t.Fatal(w.Code, w.Body)
+	}
+	backdateControlLedger(t, runtime)
+	go func() {
+		done <- action(runtime, "/board/parameters", controlApply("enable", smsBoard(""), phone, password))
+	}()
+	serveEnable(t, board, runtime, reader, phone, password, "", true, url)
+	w = <-done
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"mode":2`) || strings.Contains(w.Body.String(), "slottts") {
+		t.Fatal(w.Code, w.Body)
+	}
+	backdateControlLedger(t, runtime)
+	go func() {
+		done <- action(runtime, "/board/parameters", controlApply("restore", smsBoard(url), phone, password))
+	}()
+	serveRestore(t, board, runtime, reader, url, "", []controlSMS{{"*#slot2cim#" + password + "#0", "设备(SYNTHETIC) 卡槽2 设置为来电 不接听"}, {"*#slot2tts#" + password + "#", "设备(SYNTHETIC)卡槽2的自动语音，已经取消。"}})
+	w = <-done
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"verified":true`) || !strings.Contains(w.Body.String(), `"url_verified":true`) || !strings.Contains(w.Body.String(), `"mode":0`) || !strings.Contains(w.Body.String(), `"tts":""`) {
+		t.Fatal(w.Code, w.Body)
+	}
+	if controlRows(t, runtime) != 5 {
+		t.Fatal("restore enable restore sms count", controlRows(t, runtime))
+	}
+	assertControlSecretsAbsent(t, runtime, password)
+}
+
+func TestEnableRestoreCycleRepeatsClearTTS(t *testing.T) {
+	const phone, password = "13800138000", "000000"
+	runtime, board, reader, done := startControlBoard(t)
+	url := runtime.Config.VoicemailAMRURL
+	current := ""
+	for i := 0; i < 2; i++ {
+		expected := current
+		go func() {
+			done <- action(runtime, "/board/parameters", controlApply("enable", smsBoard(expected), phone, password))
+		}()
+		serveEnable(t, board, runtime, reader, phone, password, expected, true, url)
+		if w := <-done; w.Code != 200 || strings.Contains(w.Body.String(), "slottts") {
+			t.Fatal(w.Code, w.Body)
+		}
+		backdateControlLedger(t, runtime)
+		current = url
+		expected = current
+		go func() {
+			done <- action(runtime, "/board/parameters", controlApply("restore", smsBoard(expected), phone, password))
+		}()
+		serveRestore(t, board, runtime, reader, expected, "", []controlSMS{{"*#slot2cim#" + password + "#0", "设备(SYNTHETIC) 卡槽2 设置为来电 不接听"}, {"*#slot2tts#" + password + "#", "设备(SYNTHETIC)卡槽2的自动语音，已经取消。"}})
+		w := <-done
+		if w.Code != 200 || !strings.Contains(w.Body.String(), `"mode":0`) || !strings.Contains(w.Body.String(), `"tts":""`) || !strings.Contains(w.Body.String(), `"url_verified":true`) {
+			t.Fatal(w.Code, w.Body)
+		}
+		backdateControlLedger(t, runtime)
+		current = ""
+	}
+	if controlRows(t, runtime) != 6 {
+		t.Fatal("two enable and restore cycles", controlRows(t, runtime))
+	}
+	assertControlSecretsAbsent(t, runtime, password)
+}
+
+func TestDuplicateRestoreStepStillClearsUploadURL(t *testing.T) {
+	const phone, password, iccid = "13800138000", "000000", "SYNTHETIC-ICC-2"
+	runtime, board, reader, done := startControlBoard(t)
+	url := runtime.Config.VoicemailAMRURL
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		body := controlApply("restore", smsBoard(url), phone, password)
+		req := httptest.NewRequest("POST", "http://example.com/api/board/parameters", strings.NewReader(mustJSON(t, body))).WithContext(ctx)
+		req.Host = "127.0.0.1:8080"
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		runtime.Handler().ServeHTTP(w, req)
+		done <- w
+	}()
+	answerVoicemailRead(t, board, runtime, reader, url)
+	answerControlStat(t, board, runtime, reader, slotStat(phone, iccid, 2))
+	cmd := read(t, reader, runtime.codec())
+	if cmd["cmd"] != "sendsms" || cmd["p3"] != "*#slot2cim#"+password+"#0" {
+		t.Fatal(cmd)
+	}
+	send(t, board, runtime.codec(), map[string]any{"type": 501, "devId": "SIM-TEST", "slot": 2, "iccId": iccid, "phNum": phone, "smsTs": time.Now().Unix(), "smsBd": "设备(SYNTHETIC) 卡槽2 设置为来电 不接听"})
+	answerControlStat(t, board, runtime, reader, slotStat(phone, iccid, 2))
+	cmd = read(t, reader, runtime.codec())
+	if cmd["cmd"] != "sendsms" || cmd["p3"] != "*#slot2tts#"+password+"#" {
+		t.Fatal(cmd)
+	}
+	cancel()
+	if w := <-done; w.Code != 502 {
+		t.Fatal(w.Code, w.Body)
+	}
+	if controlRows(t, runtime) != 2 {
+		t.Fatal(controlRows(t, runtime))
+	}
+	go func() {
+		done <- action(runtime, "/board/parameters", controlApply("restore", smsBoard(url), phone, password))
+	}()
+	serveRestore(t, board, runtime, reader, url, "", []controlSMS{{"", ""}, {"", ""}})
+	w := <-done
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"sms_submitted":false`) || !strings.Contains(w.Body.String(), `"url_verified":true`) || !strings.Contains(w.Body.String(), `"verified":false`) || strings.Contains(w.Body.String(), `"mode":0`) || strings.Contains(w.Body.String(), `"tts":""`) {
+		t.Fatal(w.Code, w.Body)
+	}
+	if controlRows(t, runtime) != 2 {
+		t.Fatal("skipped steps consumed quota", controlRows(t, runtime))
+	}
+	go func() {
+		done <- action(runtime, "/board/parameters", controlApply("restore", smsBoard(""), phone, password))
+	}()
+	answerVoicemailRead(t, board, runtime, reader, "")
+	answerControlStat(t, board, runtime, reader, slotStat(phone, iccid, 2))
+	answerControlStat(t, board, runtime, reader, slotStat(phone, iccid, 2))
+	if w := <-done; w.Code != 409 || !strings.Contains(w.Body.String(), "control_already_dispatched") {
+		t.Fatal(w.Code, w.Body)
+	}
+	expectNoBoardCommand(t, board)
+	if controlRows(t, runtime) != 2 {
+		t.Fatal(controlRows(t, runtime))
+	}
+}
+
+func TestUnknownRestoreDoesNotResendFinishedMode(t *testing.T) {
+	const phone, password, iccid = "13800138000", "000000", "SYNTHETIC-ICC-2"
+	runtime, board, reader, done := startControlBoard(t)
+	url := runtime.Config.VoicemailAMRURL
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		body := controlApply("restore", smsBoard(url), phone, password)
+		req := httptest.NewRequest("POST", "http://example.com/api/board/parameters", strings.NewReader(mustJSON(t, body))).WithContext(ctx)
+		req.Host = "127.0.0.1:8080"
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		runtime.Handler().ServeHTTP(w, req)
+		done <- w
+	}()
+	answerVoicemailRead(t, board, runtime, reader, url)
+	answerControlStat(t, board, runtime, reader, slotStat(phone, iccid, 2))
+	cmd := read(t, reader, runtime.codec())
+	if cmd["cmd"] != "sendsms" {
+		t.Fatal(cmd)
+	}
+	cancel()
+	if w := <-done; w.Code != 502 {
+		t.Fatal(w.Code, w.Body)
+	}
+	go func() {
+		done <- action(runtime, "/board/parameters", controlApply("restore", smsBoard(url), phone, password))
+	}()
+	serveRestore(t, board, runtime, reader, url, "", []controlSMS{{"", ""}, {"*#slot2tts#" + password + "#", "设备(SYNTHETIC)卡槽2的自动语音，已经取消。"}})
+	w := <-done
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"sms_submitted":true`) || !strings.Contains(w.Body.String(), `"url_verified":true`) || !strings.Contains(w.Body.String(), `"tts":""`) || strings.Contains(w.Body.String(), `"mode":0`) {
+		t.Fatal(w.Code, w.Body)
+	}
+	if controlRows(t, runtime) != 2 {
+		t.Fatal("unknown mode was sent again", controlRows(t, runtime))
+	}
+	assertControlSecretsAbsent(t, runtime, password)
+}
+
+type controlSMS struct {
+	body, receipt string
+}
+
+func startControlBoard(t *testing.T) (*Server, net.Conn, *protocol.Reader, chan *httptest.ResponseRecorder) {
+	t.Helper()
+	token := strings.Repeat("ab", 16)
+	runtime, listener := fixture(t, 1, func(c *config.Config) {
+		enableVoicemail(c, token, 2)
+		c.OutboundEnabled = true
+		c.SendDailyLimit = 20
+	})
+	board := connect(t, listener)
+	send(t, board, runtime.codec(), map[string]any{"type": 998, "devId": "SIM-TEST"})
+	waitActive(t, runtime)
+	reader := protocol.NewReader(board)
+	board.SetDeadline(time.Now().Add(60 * time.Second))
+	return runtime, board, reader, make(chan *httptest.ResponseRecorder, 1)
+}
+
+func smsBoard(url string) map[string]any {
+	return map[string]any{"channel": "sms", "amr_url": url, "slots": []map[string]any{{"slot": 1, "mode": nil, "tts": nil}, {"slot": 2, "mode": nil, "tts": nil}}}
+}
+
+func backdateControlLedger(t *testing.T, runtime *Server) {
+	t.Helper()
+	if _, err := runtime.Store.DB.Exec(`UPDATE voicemail_controls SET sent_at=sent_at-120 WHERE sent_at>0`); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func controlRows(t *testing.T, runtime *Server) int {
+	t.Helper()
+	var n int
+	if err := runtime.Store.DB.QueryRow(`SELECT count(*) FROM voicemail_controls`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	return n
+}
+
+func serveRestore(t *testing.T, board net.Conn, runtime *Server, reader *protocol.Reader, currentURL, finalURL string, messages []controlSMS) {
+	t.Helper()
+	answerVoicemailRead(t, board, runtime, reader, currentURL)
+	for _, item := range messages {
+		answerControlStat(t, board, runtime, reader, slotStat("13800138000", "SYNTHETIC-ICC-2", 2))
+		if item.body == "" {
+			continue
+		}
+		cmd := read(t, reader, runtime.codec())
+		if cmd["cmd"] != "sendsms" || cmd["p1"] != "2" || cmd["p3"] != item.body {
+			t.Fatal("restore sms", cmd)
+		}
+		send(t, board, runtime.codec(), map[string]any{"type": 501, "devId": "SIM-TEST", "slot": 2, "iccId": "SYNTHETIC-ICC-2", "phNum": "13800138000", "smsTs": time.Now().Unix(), "smsBd": item.receipt})
+	}
+	if currentURL != finalURL {
+		cmd := read(t, reader, runtime.codec())
+		if cmd["cmd"] != "setamrurl" || cmd["p1"] != "clear" {
+			t.Fatal("restore url", cmd)
+		}
+		replyBoard(t, board, runtime, cmd, "")
+	}
+	cmd := read(t, reader, runtime.codec())
+	if cmd["cmd"] != "askamrurl" {
+		t.Fatal("restore readback", cmd)
+	}
+	replyBoard(t, board, runtime, cmd, finalURL)
+}
+
+func serveEnable(t *testing.T, board net.Conn, runtime *Server, reader *protocol.Reader, phone, password, currentURL string, writeURL bool, finalURL string) {
+	t.Helper()
+	answerVoicemailRead(t, board, runtime, reader, currentURL)
+	if writeURL {
+		cmd := read(t, reader, runtime.codec())
+		if cmd["cmd"] != "setamrurl" || cmd["p1"] != runtime.Config.VoicemailAMRURL {
+			t.Fatal("enable url", cmd)
+		}
+		replyBoard(t, board, runtime, cmd, runtime.Config.VoicemailAMRURL)
+	}
+	answerControlStat(t, board, runtime, reader, slotStat(phone, "SYNTHETIC-ICC-2", 2))
+	cmd := read(t, reader, runtime.codec())
+	if cmd["cmd"] != "sendsms" || cmd["p3"] != "*#slot2cim#"+password+"#2" {
+		t.Fatal("enable sms", cmd)
+	}
+	if strings.Contains(cmd["p3"].(string), "slottts") {
+		t.Fatal("enable sent clear-tts", cmd["p3"])
+	}
+	send(t, board, runtime.codec(), map[string]any{"type": 501, "devId": "SIM-TEST", "slot": 2, "iccId": "SYNTHETIC-ICC-2", "phNum": phone, "smsTs": time.Now().Unix(), "smsBd": "设备(SYNTHETIC) 卡槽2 设置为来电 2声后自动挂断"})
+	cmd = read(t, reader, runtime.codec())
+	if cmd["cmd"] != "askamrurl" {
+		t.Fatal("enable readback", cmd)
+	}
+	replyBoard(t, board, runtime, cmd, finalURL)
+}
+
+func assertControlSecretsAbsent(t *testing.T, runtime *Server, password string) {
+	t.Helper()
+	var leaked int
+	if err := runtime.Store.DB.QueryRow(`SELECT count(*) FROM messages WHERE instr(body,?)>0`, password).Scan(&leaked); err != nil || leaked != 0 {
+		t.Fatal("password entered the inbox", leaked, err)
+	}
+	if err := runtime.Store.DB.QueryRow(`SELECT count(*) FROM outgoing WHERE instr(body,?)>0`, password).Scan(&leaked); err != nil || leaked != 0 {
+		t.Fatal("password entered the outbox", leaked, err)
+	}
+	rows, _ := runtime.Logs.Snapshot(diagnostics.Filter{}, 200)
+	for _, row := range rows {
+		encoded, _ := json.Marshal(row)
+		if strings.Contains(string(encoded), password) {
+			t.Fatal("password logged")
+		}
 	}
 }
 

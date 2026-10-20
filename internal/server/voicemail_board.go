@@ -172,7 +172,7 @@ func (s *Server) handleVoicemailBoard(w http.ResponseWriter, r *http.Request, ac
 		"url_verified":  urlVerified,
 		"submission":    submission,
 		"unchanged":     unchanged,
-		"sms_submitted": written.Steps > 0 && written.Confirmed < written.Steps,
+		"sms_submitted": written.Sent > 0 && written.Confirmed < written.Steps,
 	})
 }
 
@@ -247,6 +247,8 @@ func (s *Server) voicemailTarget(intent string, current voicemailBoardState) (vo
 
 type voicemailWriteResult struct {
 	Steps     int
+	Sent      int
+	Skipped   int
 	Confirmed int
 	Accepted  int
 	Modes     map[int]int
@@ -348,6 +350,7 @@ func (s *Server) writeVoicemailBoard(ctx context.Context, sess *session, intent 
 		return ""
 	}
 	runSMS := func() string {
+		blocked := false
 		for i, item := range messages {
 			info, problem := s.boardSlotInfo(ctx, sess)
 			if problem != "" {
@@ -358,7 +361,16 @@ func (s *Server) writeVoicemailBoard(ctx context.Context, sess *session, intent 
 				return problem
 			}
 			confirmed, accepted, problem := s.boardSMSCommand(ctx, sess, item.slot, item.phone, iccid, item.kind, item.body, item.mode, item.clear, i > 0, item.ok)
+			if problem == "control_already_dispatched" {
+				// This step was already recorded for the open attempt. Keep the
+				// remaining steps, including a TCP upload-URL clear.
+				result.Steps++
+				result.Skipped++
+				blocked = true
+				continue
+			}
 			result.Steps++
+			result.Sent++
 			if confirmed {
 				result.Confirmed++
 				result.Accepted++
@@ -376,13 +388,23 @@ func (s *Server) writeVoicemailBoard(ctx context.Context, sess *session, intent 
 				return problem
 			}
 		}
+		if blocked && result.Sent == 0 {
+			return "control_already_dispatched"
+		}
 		return ""
 	}
 	if intent == "restore" {
-		if problem := runSMS(); problem != "" {
+		problem := runSMS()
+		if problem != "" && problem != "control_already_dispatched" {
 			return result, problem
 		}
-		return result, runTCP(tcp)
+		if len(tcp) > 0 {
+			if tcpProblem := runTCP(tcp); tcpProblem != "" {
+				return result, tcpProblem
+			}
+			return result, ""
+		}
+		return result, problem
 	}
 	if problem := runTCP(tcp); problem != "" {
 		return result, problem

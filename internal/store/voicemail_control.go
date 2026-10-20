@@ -39,12 +39,16 @@ type VoicemailControl struct {
 
 // ClaimVoicemailControl persists "may have sent" before any network write.
 // The row stores the destination and SIM identity, never the password or the
-// command body. The latest non-rejected command for this slot and kind is one
-// attempt: repeating its target does not send again, including when the result
-// is still unknown after a restart. A later command with the opposite target
-// is a new attempt. relaxInterval is only for a later SMS inside the same
-// confirmed action; the daily quota still applies, and it is the same quota
-// as ordinary outgoing SMS.
+// command body. The latest non-rejected command for this slot and kind is the
+// open attempt. Repeating its target does not send again, including when the
+// result is still unknown after a restart. A different target starts a new
+// attempt, which is how stop and enable alternate. Clear-TTS has no opposite
+// command on enable, so a repeated clear is also a new attempt when a newer
+// non-rejected command already exists on the slot: the enable, or the mode
+// row of a new restore. The clear recorded in the same restore is newer than
+// that restore's mode and does not make the mode eligible to send again.
+// relaxInterval is only for a later SMS inside the same confirmed action; the
+// daily quota still applies, and it is the same quota as ordinary outgoing SMS.
 func (s *Store) ClaimVoicemailControl(ctx context.Context, device string, slot int, phone, iccid, kind string, mode int, clear bool, now int64, limits SendLimits, relaxInterval bool) (int64, error) {
 	if iccid == "" || (slot != 1 && slot != 2) || (kind != "mode" && kind != "tts") {
 		return 0, safety("card_identity_required")
@@ -64,17 +68,27 @@ func (s *Store) ClaimVoicemailControl(ctx context.Context, device string, slot i
 		return 0, err
 	}
 	defer tx.Rollback()
+	var priorID int64
 	var priorICCID string
 	var priorMode, priorClear int
-	err = tx.QueryRowContext(ctx, `SELECT iccid, mode, clear_tts FROM voicemail_controls WHERE device_id=? AND slot=? AND kind=? AND state!='rejected' ORDER BY sent_at DESC, id DESC LIMIT 1`, device, slot, kind).Scan(&priorICCID, &priorMode, &priorClear)
-	if err == nil {
-		if priorMode == mode && priorClear == clearBit {
+	err = tx.QueryRowContext(ctx, `SELECT id, iccid, mode, clear_tts FROM voicemail_controls WHERE device_id=? AND slot=? AND kind=? AND state!='rejected' ORDER BY sent_at DESC, id DESC LIMIT 1`, device, slot, kind).Scan(&priorID, &priorICCID, &priorMode, &priorClear)
+	if err == nil && priorMode == mode && priorClear == clearBit {
+		unlocked := false
+		if kind == "tts" {
+			var later int
+			err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM voicemail_controls WHERE device_id=? AND slot=? AND id>? AND state!='rejected')`, device, slot, priorID).Scan(&later)
+			if err != nil {
+				return 0, err
+			}
+			unlocked = later > 0
+		}
+		if !unlocked {
 			if priorICCID != iccid {
 				return 0, safety("card_changed")
 			}
 			return 0, safety("control_already_dispatched")
 		}
-	} else if err != sql.ErrNoRows {
+	} else if err != nil && err != sql.ErrNoRows {
 		return 0, err
 	}
 	if err = chargeableSendAllowed(ctx, tx, device, iccid, now, limits, relaxInterval); err != nil {
