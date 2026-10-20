@@ -1,15 +1,15 @@
 # 版本发布、Docker 更新与验证
 
-版本号采用 `主版本.次版本.修订号`，发布标签为 `v1.0.4`，镜像标签为 `1.0.4`。应用在已认证的 `/api/state` 和健康接口 `/api/health` 返回 `version`，用于核对实际运行版本。
+版本号采用 `主版本.次版本.修订号`，发布标签为 `v1.1.0`，镜像标签为 `1.1.0`。应用在已认证的 `/api/state` 和健康接口 `/api/health` 返回 `version`，用于核对实际运行版本。
 
 ## 标签、Release 与镜像的关系
 
 | 项目 | 作用 | 创建方式 |
 | --- | --- | --- |
-| 应用版本 `1.0.4` | 网页和 API 显示的运行版本 | 在源码与构建配置中维护 |
-| Git 标签 `v1.0.4` | 固定本版源码对应的提交 | 本地创建后推送，或在 GitHub 发布页面创建 |
+| 应用版本 `1.1.0` | 网页和 API 显示的运行版本 | 在源码与构建配置中维护 |
+| Git 标签 `v1.1.0` | 固定本版源码对应的提交 | 本地创建后推送，或在 GitHub 发布页面创建 |
 | GitHub Release | 展示版本说明、源码包及附件 | 在 Releases 页面基于标签发布 |
-| GHCR 镜像 `:1.0.4` | Docker 安装与更新使用的构建产物 | `Release image` 工作流构建并上传 |
+| GHCR 镜像 `:1.1.0` | Docker 安装与更新使用的构建产物 | `Release image` 工作流构建并上传 |
 
 当前 [Release image 工作流](../.github/workflows/release.yml)仅在收到 `v*` 标签推送后运行，负责镜像验证与发布；Release 页面由维护者另外填写和发布。本地提交、普通 `main` 分支推送均不触发镜像上传，当前也没有手动触发或定时发布入口。
 
@@ -20,17 +20,14 @@
 1. 整理代码、文档、版本号与更新记录，运行 CONTRIBUTING 中与改动相关的检查。
 2. 核对版本号一致：`internal/version/version.go`、`web/package.json`/锁文件、Dockerfile 标签、Compose 默认镜像与本版文档。
 3. 按部署目标分别构建和验证架构镜像。使用合成数据检查启动、健康、备份/恢复和迁移确认。
-4. 确定包含本版最终代码与文档的提交，再创建并推送版本标签。例如首次创建 v1.0.4：
+4. 确定包含本版最终代码与文档的提交，核对工作区和提交：
 
    ```sh
    git status --short --branch
    git log -1 --oneline
-   git tag -a v1.0.4 -m "SIMHarbor 1.0.4"
-   git push origin main
-   git push origin v1.0.4
    ```
 
-   已有本地标签时先用 `git show --no-patch v1.0.4` 核对指向，再推送该标签。已发布版本保持固定，后续修正使用新提交及相应版本。
+   使用 GitHub Desktop 时，先推送 `main`，再在 History 中选中定版提交，通过 Create Tag 创建 `v1.1.0` 并推送标签。不要假定在命令行创建的标签会随 Desktop 推送分支一并上传。已有同名标签时先核对指向；发布标签必须对应最终定版提交。已发布版本保持固定，后续修正使用新提交及相应版本。
 5. 打开 Actions → Release image，等待验证与发布成功，并核对镜像的 amd64/arm64 架构清单。工作流成功后再检查 Packages 中对应镜像版本。
 6. 在 GitHub 的 Releases → Create a new release 中选择已有标签，填写标题和本版说明后 Publish release。也可在该页面创建新标签并选择目标提交，再发布以触发构建，步骤见 [GitHub 官方指南](https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository)。
 7. 分享镜像时核对 GHCR 包的可见性；公开使用测试匿名拉取，私有分享准备相应读取权限。复用与分发按 README 的许可说明处理。
@@ -43,9 +40,9 @@ GitHub Release、镜像发布与云端部署各有独立结果，按上述顺序
 
 ```sh
 git fetch origin --tags
-git checkout --detach v1.0.4
-docker build --platform linux/amd64 -t sim-harbor:1.0.4 .
-docker image inspect sim-harbor:1.0.4 --format '{{.Os}}/{{.Architecture}}'
+git checkout --detach v1.1.0
+docker build --platform linux/amd64 -t sim-harbor:1.1.0 .
+docker image inspect sim-harbor:1.1.0 --format '{{.Os}}/{{.Architecture}}'
 ```
 
 尚未发布标签时，也可从已经核对的远端提交构建；记录实际提交 SHA，便于后续对应源码与镜像。
@@ -55,8 +52,8 @@ docker image inspect sim-harbor:1.0.4 --format '{{.Os}}/{{.Architecture}}'
 使用已成功发布的包时：
 
 ```sh
-docker pull ghcr.io/battery233/sim-harbor:1.0.4
-docker buildx imagetools inspect ghcr.io/battery233/sim-harbor:1.0.4
+docker pull ghcr.io/battery233/sim-harbor:1.1.0
+docker buildx imagetools inspect ghcr.io/battery233/sim-harbor:1.1.0
 ```
 
 确认包含目标架构。生产环境可进一步固定镜像清单摘要，使升级和回退目标可追溯。私有包使用具备 `read:packages` 权限的凭据在主机私密登录。
@@ -64,6 +61,18 @@ docker buildx imagetools inspect ghcr.io/battery233/sim-harbor:1.0.4
 ## 已有实例升级
 
 下面沿用[Docker 安装](deployment-docker.md)中的项目名 `sim` 与 `deploy/site.private.yaml`。既有实例按实际参数操作：例如原项目名为 `sim-cloud`、覆盖文件为 `deploy/cloud.private.yaml`，就将下文所有相应参数一并替换为原值。项目名、端口、数据卷和数据目录保持一致。
+
+### 从 v1.0.4 升级到 v1.1.0
+
+v1.1.0 增加默认关闭的[留言](voicemail.md)，包括接通提示音、本地 AMR 上传、网页播放与下载、留言通知以及经过确认的板子启用和恢复操作。新增能力的合成测试不代替 v153 或其他固件的真机完整链路验收。
+
+既有配置缺少留言字段时默认关闭，无需为了升级补填卡槽、提示音或上传地址。云端继续使用原有短信、来电和通知功能，保持留言关闭；本版不支持云端录音上传，也不要求为升级调整端口、Tunnel 或板子参数。云端录音和包含录音的备份见[开发规划](roadmap.md)。
+
+首次打开原数据库时，应用在事务中自动从 schema 17 升至 19：schema 18 增加留言索引与通知类型，schema 19 增加不含密码或指令正文的控制短信账本。留言关闭也会迁移。沿用原项目名、完整 Compose 文件、配置和数据卷，仅更新版本覆盖文件里的镜像引用并重建服务即可；不执行 `restore`、不手工改库，也不需要重新完成已有的迁移确认。历史短信、分片上报关联、来电、通知状态、卡偏好与恢复保护保留。
+
+升级前用 v1.0.4 保存 schema 17 数据库 ZIP 和私有配置，保留旧镜像供回退。新库不能直接交给 v1.0.4 或更早版本；回退需保留升级后的最新数据，再使用升级前兼容备份恢复到独立目录，不要修改 `schema_version` 降级。若已有录音，另行保存 `voicemail/`：ZIP 含索引和控制账本，不含 AMR，恢复录音需把单独保存的目录放回数据目录。
+
+先拉取并核对已成功发布的 `1.1.0` 镜像，再更新 `deploy/release.private.yaml` 并按下方步骤重建。只拉取镜像不会替换运行容器。存在版本覆盖文件的实例，所有 Compose 操作都继续携带同一组文件，且版本覆盖文件放在最后。升级后核对版本为 `1.1.0`、容器健康、原历史和配置、板子重连及双卡状态；等待自然短信观察入库与通知，无需自动发送短信、拨号或开启留言。失败后停止操作并保留现场，不自动回退。
 
 ### 从 v1.0.3 升级到 v1.0.4
 
@@ -117,7 +126,7 @@ v1.0.4 增加[允许分片时间差的组装](protocol-notes.md#允许分片时�
 ```yaml
 services:
   sim:
-    image: sim-harbor:1.0.4
+    image: sim-harbor:1.1.0
 ```
 
 使用 GHCR 时将 image 换成已验证的完整镜像引用。这个文件集中设置发布镜像，端口、配置、数据挂载与运行策略沿用原文件。旧私有文件若固定了 `sim:旧版本`，本文件必须放在最后以使新镜像生效。
@@ -143,7 +152,7 @@ docker compose --env-file .env -p sim \
 
 ### 4. 升级验收
 
-- 容器健康、镜像版本/架构正确；网页或已认证 API 的 `version` 为 `1.0.4`。
+- 容器健康、镜像版本/架构正确；网页或已认证 API 的 `version` 为 `1.1.0`。
 - 数据目录、卷、HTTP/TCP 端口及私有配置未意外变化；历史、卡名称、备注和推送开关保持。
 - 板子重连后查询新鲜状态，确认当前会话、两卡身份和注册情况。
 - 自然到达的短信能入库，按卡通知和点击链接正常；如需 Bark 连接测试，由操作者确认执行。

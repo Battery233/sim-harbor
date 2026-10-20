@@ -60,6 +60,8 @@
 
 初始化环境变量名为 `SIM_ADMIN_TOKEN`、`SIM_AES_KEY`、`SIM_AES_IV`、`SIM_BARK_KEY`，JSON 通过对应 `*_env` 字段引用。管理员 Token 至少 24 字符。
 
+v1.1.0 新增的留言字段不要求旧实例补填；缺少 `voicemail_enabled` 时默认关闭，其他业务配置继续使用原值。各部署示例均显式关闭留言，云端保持关闭。配置兼容不表示数据库可直接降级，schema 19 的备份与回退要求见[升级说明](releases.md#从-v104-升级到-v110)。
+
 ### 自定义鉴权请求头
 
 v1.0.3 起支持此配置，v1.0.2 尚不支持。默认请求格式为 `Authorization: Bearer <管理token>`。如果反向代理的 Basic Auth 也使用 `Authorization`，可在“系统配置 → 管理访问”将“自定义鉴权请求头”设为 `X-SIMHarbor-Authorization`，或在初始化 JSON 中设置：

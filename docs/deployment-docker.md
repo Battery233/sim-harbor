@@ -31,7 +31,7 @@ values = {
     'SIM_AES_KEY': secrets.token_urlsafe(12),
     'SIM_AES_IV': secrets.token_urlsafe(12),
     'SIM_BARK_KEY': '',
-    'SIM_IMAGE': 'sim-harbor:1.0.4',
+    'SIM_IMAGE': 'sim-harbor:1.1.0',
     'SIM_HTTP_PORT': '18880',
     'SIM_DEVICE_BIND': '127.0.0.1',
     'SIM_DEVICE_PORT': '39090',
@@ -52,6 +52,8 @@ PY
 ```
 
 `deploy/.env.example` 可用于查看环境变量名称；上面的脚本会自动生成带随机凭据的文件。管理员 Token 为随机字符串；AES Key 和 IV 各 16 个 ASCII 字符。板子已有密钥时，可沿用并协调应用端配置。完成基础接入后，按需配置 Bark、短信外发和持续异常提醒。
+
+配置示例默认关闭留言，已有实例不必补填新增字段。v1.1.0 仅在本地部署支持录音上传，启用步骤见[留言说明](voicemail.md)。从旧版升级前先核对[数据库兼容性](releases.md#从-v104-升级到-v110)，不要对已有部署重复执行初始化脚本。
 
 ## 3. 编辑与权限
 
