@@ -24,6 +24,7 @@
 - [架构](architecture.md)
 - [协议说明](protocol-notes.md)
 - [开发与模拟](development.md)
+- [开发规划](roadmap.md)
 - [贡献指南](../CONTRIBUTING.md)
 - [安全说明](../SECURITY.md)
 - [厂家在线文档](reference/board/README.md)
