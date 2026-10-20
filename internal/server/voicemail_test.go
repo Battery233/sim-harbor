@@ -496,7 +496,7 @@ func TestVoicemailSMSFallbackWhenSlotCommandsRejected(t *testing.T) {
 		t.Fatal("enable sent a greeting sms", cmd["p3"])
 	}
 	replyBoard(t, board, runtime, cmd, "sent")
-	send(t, board, runtime.codec(), map[string]any{"type": 501, "slot": 2, "phNum": phone, "smsTs": time.Now().Unix(), "smsBd": "设备(SYNTHETIC) 卡槽2 设置为来电 2声后自动挂断"})
+	send(t, board, runtime.codec(), map[string]any{"type": 501, "slot": 2, "iccId": "SYNTHETIC-ICC-2", "phNum": phone, "smsTs": time.Now().Unix(), "smsBd": "设备(SYNTHETIC) 卡槽2 设置为来电 2声后自动挂断"})
 	cmd = read(t, reader, runtime.codec())
 	if cmd["cmd"] != "askamrurl" {
 		t.Fatal("readback", cmd["cmd"])
@@ -662,7 +662,7 @@ func TestVoicemailSMSRejectionStillFails(t *testing.T) {
 	answerControlStat(t, board, runtime, reader, slotStat(phone, "SYNTHETIC-ICC-2", 2))
 	cmd = read(t, reader, runtime.codec())
 	replyBoard(t, board, runtime, cmd, "sent")
-	send(t, board, runtime.codec(), map[string]any{"type": 501, "slot": 2, "phNum": phone, "smsTs": time.Now().Unix(), "smsBd": "用户密码不正确"})
+	send(t, board, runtime.codec(), map[string]any{"type": 501, "slot": 2, "iccId": "SYNTHETIC-ICC-2", "phNum": phone, "smsTs": time.Now().Unix(), "smsBd": "用户密码不正确"})
 	w := <-done
 	if w.Code != 502 || !strings.Contains(w.Body.String(), "voicemail_sms_rejected") || strings.Contains(w.Body.String(), password) {
 		t.Fatal(w.Code, w.Body)

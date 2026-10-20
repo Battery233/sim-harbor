@@ -29,16 +29,22 @@ DELETE FROM schema_version; INSERT INTO schema_version VALUES(19);`)
 
 type VoicemailControl struct {
 	Phone    string
+	ICCID    string
 	Kind     string
 	Mode     int
 	ClearTTS bool
 	State    string
+	SentAt   int64
 }
 
 // ClaimVoicemailControl persists "may have sent" before any network write.
 // The row stores the destination and SIM identity, never the password or the
-// command body. relaxInterval is only for a later SMS inside the same confirmed
-// action; the daily quota and the duplicate boundary still apply.
+// command body. The latest non-rejected command for this slot and kind is one
+// attempt: repeating its target does not send again, including when the result
+// is still unknown after a restart. A later command with the opposite target
+// is a new attempt. relaxInterval is only for a later SMS inside the same
+// confirmed action; the daily quota still applies, and it is the same quota
+// as ordinary outgoing SMS.
 func (s *Store) ClaimVoicemailControl(ctx context.Context, device string, slot int, phone, iccid, kind string, mode int, clear bool, now int64, limits SendLimits, relaxInterval bool) (int64, error) {
 	if iccid == "" || (slot != 1 && slot != 2) || (kind != "mode" && kind != "tts") {
 		return 0, safety("card_identity_required")
@@ -59,29 +65,20 @@ func (s *Store) ClaimVoicemailControl(ctx context.Context, device string, slot i
 	}
 	defer tx.Rollback()
 	var priorICCID string
-	err = tx.QueryRowContext(ctx, `SELECT iccid FROM voicemail_controls WHERE device_id=? AND slot=? AND kind=? AND mode=? AND clear_tts=? AND state!='rejected' AND sent_at>? ORDER BY sent_at DESC LIMIT 1`, device, slot, kind, mode, clearBit, now-86400).Scan(&priorICCID)
+	var priorMode, priorClear int
+	err = tx.QueryRowContext(ctx, `SELECT iccid, mode, clear_tts FROM voicemail_controls WHERE device_id=? AND slot=? AND kind=? AND state!='rejected' ORDER BY sent_at DESC, id DESC LIMIT 1`, device, slot, kind).Scan(&priorICCID, &priorMode, &priorClear)
 	if err == nil {
-		if priorICCID != iccid {
-			return 0, safety("card_changed")
+		if priorMode == mode && priorClear == clearBit {
+			if priorICCID != iccid {
+				return 0, safety("card_changed")
+			}
+			return 0, safety("control_already_dispatched")
 		}
-		return 0, safety("control_already_dispatched")
-	}
-	if err != sql.ErrNoRows {
+	} else if err != sql.ErrNoRows {
 		return 0, err
 	}
-	var last sql.NullInt64
-	if err = tx.QueryRowContext(ctx, `SELECT max(ts) FROM (SELECT dispatched_at AS ts FROM outgoing WHERE device_id=? AND iccid=? AND dispatched_at>0 UNION ALL SELECT sent_at FROM voicemail_controls WHERE device_id=? AND iccid=? AND sent_at>0)`, device, iccid, device, iccid).Scan(&last); err != nil {
+	if err = chargeableSendAllowed(ctx, tx, device, iccid, now, limits, relaxInterval); err != nil {
 		return 0, err
-	}
-	if !relaxInterval && last.Valid && now-last.Int64 < limits.Interval {
-		return 0, safety("send_interval")
-	}
-	var count int
-	if err = tx.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM outgoing WHERE device_id=? AND iccid=? AND dispatched_at>=? AND dispatched_at<?) + (SELECT count(*) FROM voicemail_controls WHERE device_id=? AND iccid=? AND sent_at>=? AND sent_at<?)`, device, iccid, limits.DayStart, limits.DayEnd, device, iccid, limits.DayStart, limits.DayEnd).Scan(&count); err != nil {
-		return 0, err
-	}
-	if count >= limits.Daily {
-		return 0, safety("daily_limit")
 	}
 	res, err := tx.ExecContext(ctx, `INSERT INTO voicemail_controls(device_id,slot,phone,iccid,kind,mode,clear_tts,state,created_at,sent_at) VALUES(?,?,?,?,?,?,?,'claimed',?,?)`, device, slot, strings.TrimSpace(phone), iccid, kind, mode, clearBit, now, now)
 	if err != nil {
@@ -108,7 +105,7 @@ func (s *Store) MarkVoicemailControl(ctx context.Context, id int64, state string
 }
 
 func (s *Store) RecentVoicemailControls(ctx context.Context, slot int, since int64) ([]VoicemailControl, error) {
-	rows, err := s.DB.QueryContext(ctx, `SELECT phone, kind, mode, clear_tts, state FROM voicemail_controls WHERE slot=? AND sent_at>=? AND sent_at>0`, slot, since)
+	rows, err := s.DB.QueryContext(ctx, `SELECT phone, iccid, kind, mode, clear_tts, state, sent_at FROM voicemail_controls WHERE slot=? AND sent_at>=? AND sent_at>0`, slot, since)
 	if err != nil {
 		return nil, err
 	}
@@ -117,7 +114,7 @@ func (s *Store) RecentVoicemailControls(ctx context.Context, slot int, since int
 	for rows.Next() {
 		var item VoicemailControl
 		var clear int
-		if err = rows.Scan(&item.Phone, &item.Kind, &item.Mode, &clear, &item.State); err != nil {
+		if err = rows.Scan(&item.Phone, &item.ICCID, &item.Kind, &item.Mode, &clear, &item.State, &item.SentAt); err != nil {
 			return nil, err
 		}
 		item.ClearTTS = clear == 1

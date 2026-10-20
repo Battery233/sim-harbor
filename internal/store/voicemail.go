@@ -299,14 +299,18 @@ func chooseVoicemailCall(ctx context.Context, tx *sql.Tx, slot int, phone string
 	if err != nil {
 		return 0, false, err
 	}
-	candidates := make([]int64, 0, len(window))
+	// A non-empty card id does not prove the recording belongs to that call.
+	// Every same-number candidate in the window stays in the ambiguous set,
+	// including a call whose card is still unknown. Link only when one
+	// candidate remains and that candidate has a card id.
+	candidates := make([]voicemailCallCandidate, 0, len(window))
 	for _, item := range window {
-		if item.cardID != "" && PhonesMatch(phone, item.phone) {
-			candidates = append(candidates, item.id)
+		if PhonesMatch(phone, item.phone) {
+			candidates = append(candidates, item)
 		}
 	}
-	if len(candidates) == 1 {
-		return candidates[0], true, nil
+	if len(candidates) == 1 && candidates[0].cardID != "" {
+		return candidates[0].id, true, nil
 	}
 	return 0, false, nil
 }

@@ -1,6 +1,10 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { createBoardSettingsFlow } from './board-settings-flow.js'
+import {
+  createBoardSettingsFlow,
+  voicemailApplyNote,
+  voicemailSlotEvidence,
+} from './board-settings-flow.js'
 test('板子设置没有自动查询，写入须确认且请求只一次，未知后只读确认', async () => {
   const calls = []
   const flow = createBoardSettingsFlow({
@@ -135,6 +139,81 @@ test('短信结果未知时返回待确认，并且只提交一次', async () =>
   assert.equal(calls.at(-1).stop_auto_answer_confirmed, true)
   assert.deepEqual(calls.at(-1).sms_phones, { 1: '13800138001', 2: '13800138002' })
   assert.equal(calls.filter((item) => item.action === 'voicemail_apply').length, 2)
+})
+test('短信通道分别接受来电方式和提示音，TCP 仍要求完整读回', async () => {
+  const base = { channel: 'sms', amr_url: '' }
+  const slots = (left, right) => ({ ...base, slots: [left, right] })
+  const known = [
+    slots({ slot: 1, mode: 2, tts: null }, { slot: 2, mode: null, tts: null }),
+    slots({ slot: 1, mode: null, tts: '旧预设' }, { slot: 2, mode: null, tts: null }),
+    slots({ slot: 1, mode: null, tts: null }, { slot: 2, mode: null, tts: null }),
+    slots({ slot: 1, mode: 0, tts: '' }, { slot: 2, mode: 2, tts: '旧预设' }),
+  ]
+  for (const voicemail of known) {
+    const flow = createBoardSettingsFlow({
+      request: async () => ({ voicemail }),
+    })
+    const saved = await flow.query('voicemail_query')
+    assert.deepEqual(saved.voicemail, voicemail)
+  }
+  const partial = known[0]
+  const flow = createBoardSettingsFlow({
+    request: async () => ({
+      voicemail: partial,
+      verified: false,
+      url_verified: true,
+      submission: 'accepted',
+    }),
+  })
+  const applied = await flow.applyVoicemail('restore', partial, true, {
+    phone: '13800138000',
+    password: '000000',
+    costConfirmed: true,
+    stopAutoAnswer: true,
+  })
+  assert.equal(applied.voicemail.slots[0].mode, 2)
+  assert.equal(applied.voicemail.slots[0].tts, null)
+  assert.equal(
+    voicemailSlotEvidence(partial.slots[0], 'sms'),
+    '卡槽 1：接听并录音 · 提示音预设尚未确认',
+  )
+  assert.equal(
+    voicemailSlotEvidence(known[1].slots[0], 'sms'),
+    '卡槽 1：来电方式尚未确认 · 板子上仍有提示音预设',
+  )
+  assert.match(
+    voicemailApplyNote('restore', applied),
+    /卡槽 1：来电方式已有确认，提示音预设尚未确认/,
+  )
+  assert.match(voicemailApplyNote('restore', applied), /不会自动重发/)
+  const broken = [
+    slots({ slot: 1, mode: '2', tts: null }, { slot: 2, mode: null, tts: null }),
+    slots({ slot: 1, mode: 1.5, tts: null }, { slot: 2, mode: null, tts: null }),
+    slots({ slot: 1, mode: 4, tts: null }, { slot: 2, mode: null, tts: null }),
+    slots({ slot: 1, mode: 2, tts: 1 }, { slot: 2, mode: null, tts: null }),
+    slots({ slot: 1, mode: true, tts: null }, { slot: 2, mode: null, tts: null }),
+    {
+      channel: 'tcp',
+      amr_url: '',
+      slots: [
+        { slot: 1, mode: 2, tts: null },
+        { slot: 2, mode: 0, tts: '' },
+      ],
+    },
+    {
+      amr_url: '',
+      slots: [
+        { slot: 1, mode: null, tts: null },
+        { slot: 2, mode: 0, tts: '' },
+      ],
+    },
+  ]
+  for (const voicemail of broken) {
+    const rejected = createBoardSettingsFlow({
+      request: async () => ({ voicemail }),
+    })
+    await assert.rejects(rejected.query('voicemail_query'), /留言查询结果不完整/)
+  }
 })
 test('板子设置结果不完整不声称成功，不支持任意命令', async () => {
   const flow = createBoardSettingsFlow({ request: async () => ({ seconds: 120 }) })

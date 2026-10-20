@@ -619,10 +619,15 @@ func (s *Server) boardSMSCommand(ctx context.Context, sess *session, slot int, p
 	id := tid()
 	ch := make(chan queryReply, 4)
 	watch := make(chan protocol.Event, 8)
+	sentAt := now.Unix()
 	sess.mu.Lock()
 	sess.tid = id
 	sess.response = ch
 	sess.smsWatch = watch
+	sess.smsWatchSlot = slot
+	sess.smsWatchPhone = phone
+	sess.smsWatchICCID = iccid
+	sess.smsWatchSent = sentAt
 	sess.acceptSMSReport = true
 	sess.mu.Unlock()
 	defer func() {
@@ -631,6 +636,10 @@ func (s *Server) boardSMSCommand(ctx context.Context, sess *session, slot int, p
 			sess.tid = ""
 			sess.response = nil
 			sess.smsWatch = nil
+			sess.smsWatchSlot = 0
+			sess.smsWatchPhone = ""
+			sess.smsWatchICCID = ""
+			sess.smsWatchSent = 0
 			sess.acceptSMSReport = false
 		}
 		sess.mu.Unlock()
@@ -676,7 +685,7 @@ func (s *Server) boardSMSCommand(ctx context.Context, sess *session, slot int, p
 				}
 			}
 		case ev := <-watch:
-			if voicemailCommandSMS(ev) {
+			if !controlSMSRelevant(ev, slot, phone, iccid, sentAt) || voicemailCommandSMS(ev) {
 				continue
 			}
 			compact := compactSMS(strings.Join(smsChunks(ev), ""))
@@ -684,7 +693,7 @@ func (s *Server) boardSMSCommand(ctx context.Context, sess *session, slot int, p
 				mark("rejected")
 				return false, sawAccept, "voicemail_sms_rejected"
 			}
-			if accept(ev.Body) {
+			if accept(strings.Join(smsChunks(ev), "")) {
 				mark("accepted")
 				return true, true, ""
 			}
@@ -901,6 +910,20 @@ func smsTTSOK(body string, slot int, clear bool) bool {
 	return strings.Contains(text, "已经设置完成")
 }
 
+// controlSMSRelevant reports whether a 501 can be evidence for this control attempt.
+// The body is not enough: the source number, the slot that actually received it,
+// and a confirmable SIM identity must match, and the message must not predate the attempt.
+func controlSMSRelevant(e protocol.Event, slot int, phone, iccid string, sentAt int64) bool {
+	if e.Type != 501 || int(e.Slot) != slot || sentAt <= 0 || int64(e.SMSTS) < sentAt {
+		return false
+	}
+	if !store.PhonesMatch(e.Phone, phone) {
+		return false
+	}
+	identity := store.ConfirmableSIM(e.ICCID)
+	return identity != "" && identity == iccid
+}
+
 func voicemailCommandSMS(e protocol.Event) bool {
 	for _, chunk := range smsChunks(e) {
 		folded := strings.ToLower(strings.TrimSpace(chunk))
@@ -929,7 +952,7 @@ func (s *Server) controlSMSSuppressed(ctx context.Context, e protocol.Event) (bo
 		return false, err
 	}
 	for _, row := range rows {
-		if !store.PhonesMatch(e.Phone, row.Phone) {
+		if !controlSMSRelevant(e, int(e.Slot), row.Phone, row.ICCID, row.SentAt) {
 			continue
 		}
 		if strings.Contains(text, "密码不正确") || strings.Contains(text, "格式错误") {

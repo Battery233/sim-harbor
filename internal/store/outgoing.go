@@ -149,22 +149,8 @@ func (s *Store) ClaimOutgoing(ctx context.Context, id, iccid string, now int64, 
 	if iccid == "" || iccid != o.ICCID {
 		return o, false, safety("card_changed")
 	}
-	if limits.Interval < 10 || limits.Daily < 1 || limits.DayEnd <= limits.DayStart {
-		return o, false, safety("invalid_send_limits")
-	}
-	var last sql.NullInt64
-	if e = tx.QueryRowContext(ctx, `SELECT max(dispatched_at) FROM outgoing WHERE device_id=? AND iccid=? AND dispatched_at>0`, o.DeviceID, o.ICCID).Scan(&last); e != nil {
+	if e = chargeableSendAllowed(ctx, tx, o.DeviceID, o.ICCID, now, limits, false); e != nil {
 		return o, false, e
-	}
-	if last.Valid && now-last.Int64 < limits.Interval {
-		return o, false, safety("send_interval")
-	}
-	var count int
-	if e = tx.QueryRowContext(ctx, `SELECT count(*) FROM outgoing WHERE device_id=? AND iccid=? AND dispatched_at>=? AND dispatched_at<?`, o.DeviceID, o.ICCID, limits.DayStart, limits.DayEnd).Scan(&count); e != nil {
-		return o, false, e
-	}
-	if count >= limits.Daily {
-		return o, false, safety("daily_limit")
 	}
 	// Recheck content at the claim boundary, including previews prepared earlier.
 	var duplicate string
@@ -282,6 +268,31 @@ func outgoingView(ctx context.Context, tx *sql.Tx, o Outgoing, now int64) (Outgo
 	}
 	o.Delivery = "unconfirmed"
 	return deliveryView(ctx, tx, o)
+}
+
+// chargeableSendAllowed is the single quota check for ordinary outgoing SMS and
+// voicemail control SMS on one SIM. Both paths count both ledgers inside the
+// caller's transaction. relaxInterval is only for another required command
+// inside the same confirmed voicemail action; that command still uses a daily slot.
+func chargeableSendAllowed(ctx context.Context, tx *sql.Tx, device, iccid string, now int64, limits SendLimits, relaxInterval bool) error {
+	if limits.Interval < 10 || limits.Daily < 1 || limits.DayEnd <= limits.DayStart {
+		return safety("invalid_send_limits")
+	}
+	var last sql.NullInt64
+	if err := tx.QueryRowContext(ctx, `SELECT max(ts) FROM (SELECT dispatched_at AS ts FROM outgoing WHERE device_id=? AND iccid=? AND dispatched_at>0 UNION ALL SELECT sent_at FROM voicemail_controls WHERE device_id=? AND iccid=? AND sent_at>0)`, device, iccid, device, iccid).Scan(&last); err != nil {
+		return err
+	}
+	if !relaxInterval && last.Valid && now-last.Int64 < limits.Interval {
+		return safety("send_interval")
+	}
+	var count int
+	if err := tx.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM outgoing WHERE device_id=? AND iccid=? AND dispatched_at>=? AND dispatched_at<?) + (SELECT count(*) FROM voicemail_controls WHERE device_id=? AND iccid=? AND sent_at>=? AND sent_at<?)`, device, iccid, limits.DayStart, limits.DayEnd, device, iccid, limits.DayStart, limits.DayEnd).Scan(&count); err != nil {
+		return err
+	}
+	if count >= limits.Daily {
+		return safety("daily_limit")
+	}
+	return nil
 }
 
 func DayLimits(now time.Time, interval int64, daily int) SendLimits {

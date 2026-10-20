@@ -35,6 +35,10 @@ type session struct {
 	tid             string
 	response        chan queryReply
 	smsWatch        chan protocol.Event
+	smsWatchSlot    int
+	smsWatchPhone   string
+	smsWatchICCID   string
+	smsWatchSent    int64
 	acceptSMSReport bool
 	acceptTTSAck    bool
 	hasStatus       bool // Protected by Server.mu; cached status must belong to this connection.
@@ -270,7 +274,9 @@ func (s *Server) handle(ctx context.Context, c net.Conn) {
 			}
 		}
 		sess.mu.Lock()
-		if e.Type == 501 && sess.smsWatch != nil {
+		// Only a 501 that can belong to the in-flight control is offered to the waiter.
+		// Source, slot, confirmable SIM and arrival after that attempt all have to match.
+		if e.Type == 501 && sess.smsWatch != nil && controlSMSRelevant(e, sess.smsWatchSlot, sess.smsWatchPhone, sess.smsWatchICCID, sess.smsWatchSent) {
 			select {
 			case sess.smsWatch <- e:
 			default:

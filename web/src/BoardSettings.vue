@@ -3,7 +3,11 @@ import { ref, watch, computed, onUnmounted } from 'vue'
 import BoardHistory from './BoardHistory.vue'
 import { boardStatusView } from './board-history-flow.js'
 import InfoTip from './InfoTip.vue'
-import { createBoardSettingsFlow } from './board-settings-flow.js'
+import {
+  createBoardSettingsFlow,
+  voicemailApplyNote,
+  voicemailSlotEvidence,
+} from './board-settings-flow.js'
 const props = defineProps({ request: Function, state: Object })
 const seconds = ref(null),
   target = ref(110),
@@ -83,17 +87,7 @@ async function applyVoicemail(intent) {
       smsPassword.value = ''
       smsCost.value = false
       stopAuto.value = false
-      if (r.verified === true) {
-        note.value = r.unchanged
-          ? '板子留言参数已与目标一致，未下发修改。'
-          : intent === 'enable'
-            ? '留言参数已下发并读回。'
-            : '已恢复为不接听，并读回确认。'
-      } else {
-        note.value = r.url_verified
-          ? '短信已提交。来电方式尚未经控制短信确认，不会自动重发。上传地址已用 TCP 读回。'
-          : '短信已提交。上传地址和来电方式都还没有确认，不会自动重发。'
-      }
+      note.value = voicemailApplyNote(intent, r)
     }
   } catch (e) {
     error.value = e.message + ' 请先重新查询，不要重复提交。'
@@ -104,17 +98,7 @@ async function applyVoicemail(intent) {
   }
 }
 function slotLine(slot) {
-  const names = { 0: '不接听', 1: '接听', 2: '接听并录音', 3: '挂断' }
-  if (slot.mode == null && typeof slot.tts !== 'string')
-    return `卡槽 ${slot.slot}：TCP 未返回来电方式`
-  const mode = slot.mode == null ? '来电方式未返回' : names[slot.mode] || '待核对'
-  const preset =
-    typeof slot.tts !== 'string'
-      ? '提示音预设未读取'
-      : slot.tts
-        ? '板子上仍有提示音预设'
-        : '提示音预设为空'
-  return `卡槽 ${slot.slot}：${mode} · ${preset}`
+  return voicemailSlotEvidence(slot, voicemail.value?.channel)
 }
 async function save() {
   busy.value = true

@@ -116,6 +116,44 @@ export function createBoardSettingsFlow({ request }) {
   }
 }
 
+export function voicemailSlotEvidence(slot, channel) {
+  const names = { 0: '不接听', 1: '接听', 2: '接听并录音', 3: '挂断' }
+  const sms = channel === 'sms'
+  if (slot?.mode == null && slot?.tts == null)
+    return sms
+      ? `卡槽 ${slot.slot}：TCP 未返回来电方式 · 提示音预设尚未确认`
+      : `卡槽 ${slot.slot}：TCP 未返回来电方式`
+  const mode =
+    slot.mode == null
+      ? sms
+        ? '来电方式尚未确认'
+        : '来电方式未返回'
+      : names[slot.mode] || '来电方式待核对'
+  const preset =
+    slot.tts == null
+      ? sms
+        ? '提示音预设尚未确认'
+        : '提示音预设未读取'
+      : slot.tts
+        ? '板子上仍有提示音预设'
+        : '提示音预设为空'
+  return `卡槽 ${slot.slot}：${mode} · ${preset}`
+}
+
+export function voicemailApplyNote(intent, result) {
+  if (result?.verified === true) {
+    if (result.unchanged) return '板子留言参数已与目标一致，未下发修改。'
+    return intent === 'enable' ? '留言参数已下发并读回。' : '已恢复为不接听，并读回确认。'
+  }
+  const url = result?.url_verified ? '上传地址已用 TCP 读回' : '上传地址尚未确认'
+  const fields = (result?.voicemail?.slots || []).map((slot) => {
+    const mode = slot.mode == null ? '来电方式尚未确认' : '来电方式已有确认'
+    const tts = slot.tts == null ? '提示音预设尚未确认' : '提示音预设已有确认'
+    return `卡槽 ${slot.slot}：${mode}，${tts}`
+  })
+  return `短信已提交，不会自动重发。${url}。${fields.join('；')}。`
+}
+
 function checkedVoicemail(value) {
   if (
     !value ||
@@ -129,7 +167,12 @@ function checkedVoicemail(value) {
   for (const slot of [1, 2]) {
     const row = value.slots.find((item) => item.slot === slot)
     if (!row) throw Error('留言查询结果不完整。')
-    if (channel === 'sms' && row.mode == null && row.tts == null) continue
+    if (channel === 'sms') {
+      if (row.mode != null && (!Number.isInteger(row.mode) || row.mode < 0 || row.mode > 3))
+        throw Error('留言查询结果不完整。')
+      if (row.tts != null && typeof row.tts !== 'string') throw Error('留言查询结果不完整。')
+      continue
+    }
     if (!Number.isInteger(row.mode) || row.mode < 0 || row.mode > 3 || typeof row.tts !== 'string')
       throw Error('留言查询结果不完整。')
   }

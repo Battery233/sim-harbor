@@ -33,7 +33,7 @@ func TestControlSMSDoesNotDropOrdinaryInbox(t *testing.T) {
 		t.Fatal(err)
 	}
 	sendSMS(2, "+8613800138000", "*#slot2cim#000000#0", 1700000005)
-	sendSMS(2, "13800138000", "设备(SYNTHETIC) 卡槽2 设置为来电 不接听", 1700000006)
+	send(t, board, runtime.codec(), map[string]any{"type": 501, "devId": "SIM-TEST", "slot": 2, "iccId": "SYNTHETIC-ICC", "phNum": "+8613800138000", "smsTs": time.Now().Unix(), "smsBd": "设备(SYNTHETIC) 卡槽2 设置为来电 不接听"})
 	sendSMS(2, "13900139000", "设备(SYNTHETIC) 卡槽2 设置为来电 不接听", 1700000007)
 	sendSMS(1, "13800138000", "设备(SYNTHETIC) 卡槽1 设置为来电 不接听", 1700000008)
 	waitMessageCount(t, runtime, 5)
@@ -271,6 +271,83 @@ func TestDualSlotControlSMSChecksEachNumber(t *testing.T) {
 	w := <-done
 	if w.Code != 200 || !strings.Contains(w.Body.String(), `"verified":false`) || strings.Contains(w.Body.String(), `"mode":2`) {
 		t.Fatal(w.Code, w.Body)
+	}
+}
+
+func TestControlReplyMatchesSourceSlotAndSIM(t *testing.T) {
+	const phone, password, iccid = "13800138000", "000000", "SYNTHETIC-ICC-2"
+	token := strings.Repeat("ab", 16)
+	runtime, listener := fixture(t, 1, func(c *config.Config) {
+		enableVoicemail(c, token, 2)
+		c.OutboundEnabled = true
+		c.BarkKey, c.BarkBaseURL, c.PublicURL = "SYNTHETIC", "https://example.invalid", "https://example.invalid"
+	})
+	board := connect(t, listener)
+	send(t, board, runtime.codec(), map[string]any{"type": 998, "devId": "SIM-TEST"})
+	waitActive(t, runtime)
+	reader := protocol.NewReader(board)
+	board.SetDeadline(time.Now().Add(20 * time.Second))
+	done := make(chan *httptest.ResponseRecorder, 1)
+	unknown := map[string]any{"channel": "sms", "amr_url": "", "slots": []map[string]any{{"slot": 1, "mode": nil, "tts": nil}, {"slot": 2, "mode": nil, "tts": nil}}}
+	go func() {
+		done <- action(runtime, "/board/parameters", controlApply("enable", unknown, phone, password))
+	}()
+	answerVoicemailRead(t, board, runtime, reader, "")
+	cmd := read(t, reader, runtime.codec())
+	if cmd["cmd"] != "setamrurl" {
+		t.Fatal(cmd)
+	}
+	replyBoard(t, board, runtime, cmd, runtime.Config.VoicemailAMRURL)
+	answerControlStat(t, board, runtime, reader, slotStat(phone, iccid, 2))
+	cmd = read(t, reader, runtime.codec())
+	if cmd["cmd"] != "sendsms" {
+		t.Fatal(cmd)
+	}
+	success := "设备(SYNTHETIC) 卡槽2 设置为来电 2声后自动挂断"
+	fresh := time.Now().Unix()
+	sendReply := func(slot int, from, card, body string, ts int64) {
+		t.Helper()
+		send(t, board, runtime.codec(), map[string]any{"type": 501, "devId": "SIM-TEST", "slot": slot, "iccId": card, "phNum": from, "smsTs": ts, "smsBd": body})
+	}
+	sendReply(2, "13900139000", iccid, success, fresh)
+	sendReply(1, phone, iccid, success, fresh+1)
+	sendReply(2, phone, "SYNTHETIC-ICC-OTHER", success, fresh+2)
+	sendReply(2, phone, "", success, fresh+3)
+	sendReply(2, phone, iccid, success, fresh-3600)
+	sendReply(2, "13700137000", "SYNTHETIC-ICC-OTHER", "密码不正确", fresh+4)
+	sendReply(1, phone, iccid, "格式错误", fresh+5)
+	waitMessageCount(t, runtime, 7)
+	board.SetReadDeadline(time.Now().Add(300 * time.Millisecond))
+	if _, err := reader.Next(); err == nil {
+		t.Fatal("unrelated sms was accepted as the control reply")
+	}
+	board.SetDeadline(time.Now().Add(20 * time.Second))
+	select {
+	case w := <-done:
+		t.Fatal("unrelated sms changed the control", w.Code, w.Body.String())
+	default:
+	}
+	sendReply(2, phone, iccid, success, time.Now().Unix())
+	cmd = read(t, reader, runtime.codec())
+	if cmd["cmd"] != "askamrurl" {
+		t.Fatal(cmd)
+	}
+	replyBoard(t, board, runtime, cmd, runtime.Config.VoicemailAMRURL)
+	w := <-done
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"verified":true`) || !strings.Contains(w.Body.String(), `"mode":2`) {
+		t.Fatal(w.Code, w.Body)
+	}
+	var stored int
+	if err := runtime.Store.DB.QueryRow(`SELECT count(*) FROM messages`).Scan(&stored); err != nil || stored != 7 {
+		t.Fatal("legitimate reply changed the inbox", stored, err)
+	}
+	var leaked int
+	if err := runtime.Store.DB.QueryRow(`SELECT count(*) FROM messages WHERE instr(body,?)>0`, password).Scan(&leaked); err != nil || leaked != 0 {
+		t.Fatal("password entered the inbox", leaked, err)
+	}
+	var state string
+	if err := runtime.Store.DB.QueryRow(`SELECT state FROM voicemail_controls`).Scan(&state); err != nil || state != "accepted" {
+		t.Fatal(state, err)
 	}
 }
 

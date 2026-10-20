@@ -87,6 +87,55 @@ func TestVoicemailLinkStaysConservative(t *testing.T) {
 	}
 }
 
+func TestVoicemailWindowKeepsUnknownCardAmbiguous(t *testing.T) {
+	s := open(t, filepath.Join(t.TempDir(), "sim.db"))
+	ctx := context.Background()
+	dir := t.TempDir()
+	now := time.Now().Unix()
+	recordCall(t, s, callAt(1, "15151515", "CARD-KNOWN", 11000), false)
+	recordCall(t, s, callAt(1, "15151515", "", 11008), false)
+	if _, _, _, err := s.SaveVoicemail(ctx, dir, []byte("amr-mixed"), 1, "15151515", 11005, now); err != nil {
+		t.Fatal(err)
+	}
+	var linked int
+	if err := s.DB.QueryRow(`SELECT count(*) FROM voicemails WHERE phone='15151515' AND call_id IS NOT NULL`).Scan(&linked); err != nil || linked != 0 {
+		t.Fatal("known card was chosen after dropping the unknown card", linked, err)
+	}
+	if notificationCount(t, s, 0) != 0 {
+		t.Fatal("ambiguous recording notified a call")
+	}
+
+	recordCall(t, s, callAt(1, "16161616", "CARD-BEFORE", 12000), false)
+	recordCall(t, s, callAt(1, "16161616", "CARD-AFTER", 12020), false)
+	if _, _, _, err := s.SaveVoicemail(ctx, dir, []byte("amr-swap"), 1, "16161616", 12010, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DB.QueryRow(`SELECT count(*) FROM voicemails WHERE phone='16161616' AND call_id IS NOT NULL`).Scan(&linked); err != nil || linked != 0 {
+		t.Fatal("swap-card recording was linked", linked, err)
+	}
+
+	recordCall(t, s, callAt(1, "17171717", "CARD-NEAR", 13000), false)
+	recordCall(t, s, callAt(1, "17171717", "CARD-NEAR", 13020), false)
+	if _, _, _, err := s.SaveVoicemail(ctx, dir, []byte("amr-near"), 1, "17171717", 13010, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DB.QueryRow(`SELECT count(*) FROM voicemails WHERE phone='17171717' AND call_id IS NOT NULL`).Scan(&linked); err != nil || linked != 0 {
+		t.Fatal("two near calls were treated as one", linked, err)
+	}
+	if notificationCount(t, s, 0) != 0 {
+		t.Fatal("unlinked recordings created a notification")
+	}
+
+	recordCall(t, s, callAt(2, "18181818", "CARD-ONLY", 14000), false)
+	if _, _, _, err := s.SaveVoicemail(ctx, dir, []byte("amr-only"), 2, "18181818", 14002, now); err != nil {
+		t.Fatal(err)
+	}
+	only := callByPhone(t, s, "18181818", now)
+	if only.VoicemailID == 0 || notificationCount(t, s, only.ID) != 1 {
+		t.Fatal("unique known card was left unlinked", only.VoicemailID)
+	}
+}
+
 func TestVoicemailLateLinkDedupesFileAndNotification(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sim.db")
 	s := open(t, path)
