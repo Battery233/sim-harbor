@@ -3,6 +3,7 @@ export const settingsErrors = {
   settings_unavailable: '无法读取或保存私有配置，请保留当前设置并查看运行诊断。',
   settings_conflict: '配置已被其他页面修改，请重新读取后核对。',
   settings_confirmation_required: '请先核对配置并勾选确认。',
+  voicemail_confirmation_required: '开启留言需要单独确认：所选卡槽会自动接听并录音。',
   invalid_settings:
     '配置未通过校验：请核对地址、白名单、AES长度、管理凭据长度、鉴权请求头名称和数值范围。',
   settings_restart_unavailable: '当前运行入口不支持网页重启。',
@@ -40,7 +41,7 @@ export function createSettingsFlow({ request }) {
       if (!data.pending_restart) restartAttempted = false
       return data
     },
-    async save(values, secrets, revision, confirmed) {
+    async save(values, secrets, revision, confirmed, voicemailConfirmed = false) {
       if (stopped || busy || uncertain || restartAttempted || !confirmed)
         throw new Error('请先读取配置并确认；结果不确定时不会重复保存。')
       busy = true
@@ -48,7 +49,13 @@ export function createSettingsFlow({ request }) {
       uncertain = true
       try {
         const data = validate(
-          await request('/settings', 'PUT', { values, secrets, revision, confirmed: true }),
+          await request('/settings', 'PUT', {
+            values,
+            secrets,
+            revision,
+            confirmed: true,
+            voicemail_confirmed: voicemailConfirmed === true,
+          }),
         )
         if (stopped || generation !== version) return null
         uncertain = false

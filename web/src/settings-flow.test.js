@@ -63,6 +63,7 @@ test('保存成功仅标待重启，不自动重启或发短信', async () => {
   assert.equal(calls.length, 1)
   assert.equal(calls[0][0], '/settings')
   assert.equal(calls[0][2].confirmed, true)
+  assert.equal(calls[0][2].voicemail_confirmed, false)
 })
 test('重启须再次确认，丢失响应不补发；恢复后可重新编辑', async () => {
   const calls = []

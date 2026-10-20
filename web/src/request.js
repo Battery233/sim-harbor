@@ -8,10 +8,12 @@ export function createRequest({
   fetcher = fetch,
   timeout = 15000,
 }) {
-  return async (path, method = 'GET', body) => {
+  return async (path, method = 'GET', body, options = {}) => {
     const credential = getCredential()
     const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), timeout)
+    const limit =
+      Number.isFinite(options.timeout) && options.timeout > 0 ? options.timeout : timeout
+    const timer = setTimeout(() => controller.abort(), limit)
     try {
       let response, data
       try {

@@ -28,16 +28,19 @@ import (
 )
 
 type session struct {
-	diagnosticID string
-	conn         net.Conn
-	write        sync.Mutex
-	mu           sync.Mutex
-	tid          string
-	response     chan queryReply
-	hasStatus    bool // Protected by Server.mu; cached status must belong to this connection.
-	statusAt     time.Time
-	lastSeen     time.Time
-	autoAttempt  time.Time
+	diagnosticID    string
+	conn            net.Conn
+	write           sync.Mutex
+	mu              sync.Mutex
+	tid             string
+	response        chan queryReply
+	smsWatch        chan protocol.Event
+	acceptSMSReport bool
+	acceptTTSAck    bool
+	hasStatus       bool // Protected by Server.mu; cached status must belong to this connection.
+	statusAt        time.Time
+	lastSeen        time.Time
+	autoAttempt     time.Time
 }
 type queryReply struct {
 	event      protocol.Event
@@ -62,6 +65,8 @@ type Server struct {
 	notificationGate sync.Mutex
 	exportGate       sync.Mutex
 	query            sync.Mutex
+	greetingMu       sync.Mutex
+	greetingSent     map[string]time.Time
 	wg               sync.WaitGroup
 	client           *http.Client
 }
@@ -201,8 +206,16 @@ func (s *Server) handle(ctx context.Context, c net.Conn) {
 			}
 		}
 		s.recordSMSIngest(ctx, sess, e, "sms_fragment_received", nil)
-		if err = s.Store.Ingest(ctx, e, plain, s.Config.BarkKey != ""); err != nil {
-			s.recordSMSIngest(ctx, sess, e, "sms_fragment_rejected", err)
+		var voicemailSlots []int
+		if s.Config.VoicemailEnabled {
+			voicemailSlots = s.Config.VoicemailSlots
+		}
+		// Password-bearing command text never enters the inbox. A control reply is
+		// skipped only when it matches a real control transaction for this slot
+		// and source. Ordinary SMS, including similar wording, is stored.
+		suppress, suppressErr := s.controlSMSSuppressed(ctx, e)
+		if suppressErr != nil {
+			s.recordSMSIngest(ctx, sess, e, "sms_fragment_rejected", suppressErr)
 			s.mu.Unlock()
 			if callReport {
 				s.notificationGate.Unlock()
@@ -210,7 +223,18 @@ func (s *Server) handle(ctx context.Context, c net.Conn) {
 			closed = "event_persistence_failed"
 			return
 		}
-		s.recordSMSIngest(ctx, sess, e, "sms_fragment_stored", nil)
+		if !suppress {
+			if err = s.Store.Ingest(ctx, e, plain, s.Config.BarkKey != "", voicemailSlots...); err != nil {
+				s.recordSMSIngest(ctx, sess, e, "sms_fragment_rejected", err)
+				s.mu.Unlock()
+				if callReport {
+					s.notificationGate.Unlock()
+				}
+				closed = "event_persistence_failed"
+				return
+			}
+			s.recordSMSIngest(ctx, sess, e, "sms_fragment_stored", nil)
+		}
 		var old *session
 		becameBound := !bound
 		if !bound {
@@ -246,13 +270,33 @@ func (s *Server) handle(ctx context.Context, c net.Conn) {
 			}
 		}
 		sess.mu.Lock()
-		if e.TID != "" && e.TID == sess.tid && sess.response != nil && (e.Type == 402 || (e.Type == 401 && e.Code != nil && *e.Code != 0)) {
+		if e.Type == 501 && sess.smsWatch != nil {
+			select {
+			case sess.smsWatch <- e:
+			default:
+			}
+		}
+		// telstarttts is accepted on 401/subType 26, including code 0. A later 402 is not required and must not occupy this waiter.
+		ttsAck := sess.acceptTTSAck && e.Type == 401 && int(e.SubType) == 26 && e.Code != nil
+		// Control SMS may be accepted with 401 code 0 ("sending") plus 502/503. Those must reach the waiter; 401 code 0 stays ignored for every other command.
+		smsReport := sess.acceptSMSReport && (e.Type == 502 || e.Type == 503 || (e.Type == 401 && e.Code != nil))
+		regularAck := !sess.acceptTTSAck && (e.Type == 402 || (e.Type == 401 && e.Code != nil && *e.Code != 0) || smsReport)
+		if e.TID != "" && e.TID == sess.tid && sess.response != nil && (ttsAck || regularAck) {
 			select {
 			case sess.response <- queryReply{e, receivedAt}:
 			default:
 			}
 		}
 		sess.mu.Unlock()
+		if s.claimVoicemailGreeting(e) {
+			text := s.Config.VoicemailTTS
+			slot := int(e.Slot)
+			s.wg.Add(1)
+			go func() {
+				defer s.wg.Done()
+				s.playVoicemailGreeting(sess, slot, text)
+			}()
+		}
 	}
 }
 func tid() string {
@@ -462,12 +506,24 @@ func (s *Server) Handler() http.Handler {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "no-referrer")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+		// wasm-unsafe-eval compiles the in-page AMR decoder. It does not allow eval.
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
 		if s.Config.AdminToken == "" && !localHost(r.Host) {
 			reply(w, 403, map[string]string{"error": "host_rejected"})
 			return
 		}
 		if strings.HasPrefix(r.URL.Path, "/api/") {
+			if r.Method == http.MethodPost && voicemailUploadPath(r.URL.Path) {
+				if origin := r.Header.Get("Origin"); origin != "" {
+					u, e := url.Parse(origin)
+					if e != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host != r.Host || u.User != nil {
+						reply(w, 403, map[string]string{"error": "origin_rejected"})
+						return
+					}
+				}
+				s.receiveVoicemail(w, r)
+				return
+			}
 			localHealth := r.Method == "GET" && r.URL.Path == "/api/health" && loopbackPeer(r.RemoteAddr)
 			publicAuth := r.Method == http.MethodGet && r.URL.Path == "/api/auth"
 			auth := r.Header.Values(s.Config.AdminTokenHeaderName())

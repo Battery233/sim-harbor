@@ -7,7 +7,7 @@ export function createFileRequest({
   fetcher = fetch,
   timeout = 60000,
 }) {
-  return async (path, method = 'GET', body) => {
+  return async (path, method = 'GET', body, options = {}) => {
     const credential = getCredential()
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), timeout)
@@ -51,12 +51,17 @@ export function createFileRequest({
         throw new Error(messages[code] || '文件未生成，请重新检查服务状态。')
       }
       const type = response.headers.get('Content-Type')?.split(';')[0].trim()
-      if (!['application/json', 'text/csv', 'application/zip'].includes(type))
-        throw new Error('文件响应类型无效。')
+      const allowed = options.types || ['application/json', 'text/csv', 'application/zip']
+      if (!allowed.includes(type)) throw new Error('文件响应类型无效。')
       if (!response.headers.get('Content-Disposition')?.startsWith('attachment;'))
         throw new Error('文件响应不完整。')
       const length = response.headers.get('Content-Length')
-      const max = type === 'application/zip' ? 272 * 1024 * 1024 : 32 * 1024 * 1024
+      const max =
+        Number.isSafeInteger(options.max) && options.max > 0
+          ? options.max
+          : type === 'application/zip'
+            ? 272 * 1024 * 1024
+            : 32 * 1024 * 1024
       if (!length || !/^\d+$/.test(length) || Number(length) > max)
         throw new Error('文件大小无效。')
       const reader = response.body.getReader()

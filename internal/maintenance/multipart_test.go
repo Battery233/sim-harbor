@@ -107,7 +107,7 @@ func TestVersionSixteenBackupAndReceiptLinksAfterRestore(t *testing.T) {
 	if err := s.Ingest(ctx, e, raw, true); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.DB.Exec(`DROP TABLE sms_receipts; DELETE FROM schema_version; INSERT INTO schema_version VALUES(16)`); err != nil {
+	if _, err := s.DB.Exec(`DROP TABLE IF EXISTS voicemail_controls; DROP TABLE IF EXISTS voicemails; DROP TABLE sms_receipts; DELETE FROM schema_version; INSERT INTO schema_version VALUES(16)`); err != nil {
 		t.Fatal(err)
 	}
 	a, err := Create(ctx, s, t.TempDir())
@@ -184,7 +184,7 @@ func TestVersionFifteenOfflineBackupStaysOldAndRestoresToCurrent(t *testing.T) {
 	if err := s.DB.QueryRow(`SELECT file FROM pragma_database_list WHERE name='main'`).Scan(&database); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.DB.Exec(`DROP TABLE sms_receipts; DROP INDEX messages_sms_group; ALTER TABLE messages DROP COLUMN sms_total; ALTER TABLE messages DROP COLUMN sms_group_ref; DELETE FROM schema_version; INSERT INTO schema_version VALUES(15)`); err != nil {
+	if _, err := s.DB.Exec(`DROP TABLE IF EXISTS voicemail_controls; DROP TABLE IF EXISTS voicemails; DROP TABLE sms_receipts; DROP INDEX messages_sms_group; ALTER TABLE messages DROP COLUMN sms_total; ALTER TABLE messages DROP COLUMN sms_group_ref; DELETE FROM schema_version; INSERT INTO schema_version VALUES(15)`); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.DB.Close(); err != nil {

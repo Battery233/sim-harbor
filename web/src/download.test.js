@@ -58,6 +58,31 @@ test('file request does not download HTML or a response for a replaced credentia
   })
   await assert.rejects(html('/messages/export'), /类型/)
 })
+test('AMR download is accepted only when the caller allows that type', async () => {
+  const bytes = new TextEncoder().encode('#!AMR')
+  const amr = new Response(bytes, {
+    headers: {
+      'Content-Type': 'audio/amr',
+      'Content-Disposition': 'attachment; filename="voicemail-1.amr"',
+      'Content-Length': String(bytes.length),
+    },
+  })
+  const request = createFileRequest({
+    getCredential: () => 'secret',
+    onUnauthorized: () => {},
+    fetcher: async () => amr.clone(),
+  })
+  await assert.rejects(request('/calls/1/voicemail'), /类型/)
+  assert.equal(
+    await (
+      await request('/calls/1/voicemail', 'GET', undefined, {
+        types: ['audio/amr'],
+        max: 2 * 1024 * 1024,
+      })
+    ).text(),
+    '#!AMR',
+  )
+})
 test('download flow ignores replaced responses and disposed views; failure never saves cached content', async () => {
   const pending = [],
     saved = []

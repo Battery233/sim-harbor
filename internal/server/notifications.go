@@ -40,11 +40,17 @@ func (s *Server) pushNotification(ctx context.Context, n store.Notification) (bo
 		} else if caller == "" {
 			caller = "号码未提供"
 		}
-		payload["title"] = name + " 未接来电"
-		payload["body"] = caller + " 响铃 " + strconv.FormatInt(n.RingSeconds, 10) + " 秒\n" + time.Unix(n.CallStartTS, 0).In(loc).Format("2006-01-02 15:04:05")
-		if n.CallKind == "timeout" {
+		when := time.Unix(n.CallStartTS, 0).In(loc).Format("2006-01-02 15:04:05")
+		switch n.CallKind {
+		case "voicemail":
+			payload["title"] = name + " 有留言"
+			payload["body"] = caller + " 有留言\n" + when
+		case "timeout":
 			payload["title"] = name + " 来电提示"
-			payload["body"] = caller + " 曾来电，结束时间未确认\n" + time.Unix(n.CallStartTS, 0).In(loc).Format("2006-01-02 15:04:05")
+			payload["body"] = caller + " 曾来电，结束时间未确认\n" + when
+		default:
+			payload["title"] = name + " 未接来电"
+			payload["body"] = caller + " 响铃 " + strconv.FormatInt(n.RingSeconds, 10) + " 秒\n" + when
 		}
 		payload["url"] = strings.TrimRight(s.Config.PublicURL, "/") + "/?call=" + strconv.FormatInt(n.CallID, 10)
 	}

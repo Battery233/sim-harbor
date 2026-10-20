@@ -28,5 +28,6 @@
   "log_backups": 3,
   "diagnostics_limit": 5000,
   "log_retention_days": 7,
-  "status_alerts_enabled": false
+  "status_alerts_enabled": false,
+  "voicemail_enabled": false
 }
