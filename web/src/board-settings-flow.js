@@ -159,16 +159,29 @@ export function voicemailPlan(intent, observed, running) {
   if (!running) held.push('还没有运行配置，不能预计短信条数。')
   if (intent === 'enable' && running && running.enabled !== true)
     held.push('运行中的留言服务仍是关闭的。请先在系统配置保存并重启。这不表示板子已经恢复不接听。')
-  if (configured.length === 0 && running) held.push('运行配置没有选中卡槽，这次不会下发。')
+  // Match voicemailTarget: TCP restore can recover the observed board even
+  // after the application has been disabled and its configured slots cleared.
+  const inferRestoreSlots = intent === 'restore' && channel === 'tcp' && configured.length === 0
+  const touched = inferRestoreSlots
+    ? (observed?.slots || [])
+        .filter((slot) => slot.mode !== 0 || slot.tts !== '')
+        .map((slot) => slot.slot)
+    : configured
+  if (configured.length === 0 && running && !inferRestoreSlots)
+    held.push('运行配置没有选中卡槽，这次不会下发。')
   if (intent === 'enable' && running && running.url_configured === false)
     held.push('运行配置还没有局域网上传地址，这次不会下发。')
-  const blocked = held.concat(cloud ? ['云端不接收录音，不能把这次下发当成录音已经可用。'] : [])
+  if (cloud && intent === 'enable') held.push('云端不接收录音，不能启用留言录音。')
+  const blocked = held.concat(
+    cloud && intent === 'restore' ? ['云端不接收录音，仍可恢复板子为不接听。'] : [],
+  )
   const willWrite = held.length === 0
-  const touched = configured.length > 0 ? configured : []
   let smsCount = 0
   let clearsTTS = false
   let clearsURL = false
   const lines = []
+  if (willWrite && inferRestoreSlots)
+    lines.push('运行配置没有选中卡槽，恢复范围按刚才读回的板子参数确定。')
   for (const number of touched) {
     const slot = (observed?.slots || []).find((item) => item.slot === number) || {
       slot: number,
@@ -223,7 +236,7 @@ export function voicemailPlan(intent, observed, running) {
   const summary = blocked.concat(lines)
   return {
     intent,
-    ready: blocked.length === 0 && touched.length > 0,
+    ready: willWrite && (intent === 'restore' || touched.length > 0),
     smsCount,
     sendsSMS: smsCount > 0,
     clearsTTS,

@@ -327,3 +327,89 @@ test('启用和恢复预览按卡槽给出短信条数，且不含密码或原�
   assert.match(noURL.text, /还没有局域网上传地址/)
   assert.match(voicemailPlan('enable', unknown, { enabled: false, slots: [] }).text, /不会下发/)
 })
+
+test('关闭应用且未选卡槽时，TCP 恢复预览列出实际恢复范围', () => {
+  const observed = {
+    channel: 'tcp',
+    amr_url: 'http://example.invalid/upload',
+    slots: [
+      { slot: 1, mode: 2, tts: '合成预设' },
+      { slot: 2, mode: 0, tts: '' },
+    ],
+  }
+  const running = { enabled: false, slots: [], environment: 'local', url_configured: false }
+  const plan = voicemailPlan('restore', observed, running)
+  assert.equal(plan.ready, true)
+  assert.deepEqual(plan.slots, [1])
+  assert.equal(plan.clearsTTS, true)
+  assert.equal(plan.clearsURL, true)
+  assert.equal(plan.smsCount, 0)
+  assert.match(plan.text, /卡槽 1：当前来电方式接听并录音，目标不接听/)
+  assert.match(plan.text, /卡槽 1：提示音仍有内容，会清空/)
+  assert.match(plan.text, /上传地址不是空，会清空/)
+  assert.doesNotMatch(plan.text, /这次不会下发|卡槽 2：/)
+
+  // Configured slots still restrict recovery; do not expand to the other slot.
+  const configured = voicemailPlan('restore', observed, { ...running, slots: [2] })
+  assert.deepEqual(configured.slots, [2])
+  assert.equal(configured.clearsTTS, false)
+  assert.doesNotMatch(configured.text, /卡槽 1：/)
+
+  const cloud = voicemailPlan('restore', observed, { ...running, environment: 'cloud' })
+  assert.equal(cloud.ready, true)
+  assert.deepEqual(cloud.slots, [1])
+  assert.match(cloud.text, /云端不接收录音，仍可恢复板子为不接听/)
+})
+
+test('TCP 无卡槽恢复仍可单独清空上传地址，已恢复的卡槽不重复修改', () => {
+  const observed = {
+    channel: 'tcp',
+    amr_url: 'http://example.invalid/upload',
+    slots: [
+      { slot: 1, mode: 0, tts: '' },
+      { slot: 2, mode: 0, tts: '' },
+    ],
+  }
+  const running = { enabled: false, slots: [] }
+  const urlOnly = voicemailPlan('restore', observed, running)
+  assert.equal(urlOnly.ready, true)
+  assert.deepEqual(urlOnly.slots, [])
+  assert.equal(urlOnly.clearsURL, true)
+  assert.equal(urlOnly.clearsTTS, false)
+  assert.equal(urlOnly.smsCount, 0)
+  assert.doesNotMatch(urlOnly.text, /这次不会下发|卡槽 [12]：/)
+
+  const unchanged = voicemailPlan('restore', { ...observed, amr_url: '' }, running)
+  assert.equal(unchanged.ready, true)
+  assert.deepEqual(unchanged.slots, [])
+  assert.equal(unchanged.clearsURL, false)
+  assert.match(unchanged.text, /上传地址已空，不重复清空/)
+
+  const presetOnly = voicemailPlan(
+    'restore',
+    { ...observed, slots: [observed.slots[0], { slot: 2, mode: 0, tts: '合成预设' }] },
+    running,
+  )
+  assert.deepEqual(presetOnly.slots, [2])
+  assert.equal(presetOnly.clearsTTS, true)
+})
+
+test('没有运行配置或短信通道未选卡槽时，恢复预览不可执行', () => {
+  const observed = {
+    channel: 'sms',
+    amr_url: 'http://example.invalid/upload',
+    slots: [
+      { slot: 1, mode: null, tts: null },
+      { slot: 2, mode: null, tts: null },
+    ],
+  }
+  for (const running of [null, { enabled: false, slots: [] }]) {
+    const plan = voicemailPlan('restore', observed, running)
+    assert.equal(plan.ready, false)
+    assert.equal(plan.clearsURL, false)
+    assert.equal(plan.clearsTTS, false)
+    assert.equal(plan.smsCount, 0)
+    assert.deepEqual(plan.slots, [])
+    assert.match(plan.text, /这次不会下发上传地址/)
+  }
+})

@@ -73,7 +73,7 @@ async function query(action) {
   }
 }
 async function applyVoicemail(intent) {
-  if (voicemailConsent.value !== intent) return
+  if (voicemailConsent.value !== intent || !preview.value?.ready) return
   busy.value = true
   error.value = ''
   note.value = ''
@@ -187,7 +187,7 @@ onUnmounted(() => flow.dispose())
         云端管理台不接收录音。这里不能当成录音已经可用。
       </p>
       <p v-if="state && state.voicemail_enabled !== true" class="notice">
-        运行中的留言服务是关闭的。先到系统配置保存并重启，再回到这里下发。关闭应用开关不会把板子恢复成不接听。
+        运行中的留言服务是关闭的。启用前先到系统配置保存并重启；仍可在这里读取并恢复板子为不接听。关闭应用开关不会自动停止板子接听。
       </p>
       <button type="button" :disabled="busy || !state?.online" @click="query('voicemail_query')">
         读取留言参数
@@ -203,7 +203,7 @@ onUnmounted(() => flow.dispose())
         <p v-if="voicemail.channel === 'sms'" class="tiny muted">
           来电方式不能从板子直接读回。确认后才会向该卡自己的号码发短信，可能产生费用。停止自动接听要单独确认。没有确认回执时，来电方式和提示音保持未知，不会自动重发。
         </p>
-        <p v-else class="tiny muted">
+        <p v-else-if="voicemailConsent === 'enable'" class="tiny muted">
           启用写入接听并录音和局域网上传地址，不改已有提示音。其他卡槽保持刚才读到的值。
         </p>
         <template v-if="voicemail.channel === 'sms'">
@@ -254,6 +254,7 @@ onUnmounted(() => flow.dispose())
             busy ||
             uncertain ||
             !voicemailConsent ||
+            !preview?.ready ||
             !smsReady ||
             !state?.online ||
             (voicemail.channel === 'sms' && voicemailConsent === 'restore' && !stopAuto)
