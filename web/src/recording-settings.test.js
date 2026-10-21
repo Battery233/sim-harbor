@@ -5,6 +5,8 @@ import {
   settingsSectionValues,
   normalizedSettingsValues,
   uploadAddressView,
+  recordingMode,
+  recordingEnableProblem,
 } from './recording-settings.js'
 
 const saved = {
@@ -86,4 +88,51 @@ test('地址核对展示不泄露路径令牌、查询参数或 URL 凭据', () 
   )
   assert.equal(uploadAddressView(''), '未设置')
   assert.equal(uploadAddressView('INVALID-SECRET'), '地址已设置（无法展示）')
+})
+
+test('上传方式默认局域网，不注入新字段或改写旧令牌；公网字段由录音页独立保存', () => {
+  assert.equal(recordingMode(saved), 'lan')
+  const publicValues = {
+    ...saved,
+    voicemail_upload_mode: 'public',
+    voicemail_amr_url: 'https://upload.example.com/api/voicemail/amr/' + 'a'.repeat(32),
+    voicemail_proxy_cidrs: ['172.18.0.1/32'],
+    voicemail_max_storage_mib: 512,
+  }
+  assert.equal(recordingMode(publicValues), 'public')
+  assert.deepEqual(settingsSectionValues(saved, publicValues, 'recording'), publicValues)
+  assert.deepEqual(settingsSectionValues(publicValues, { ...saved, log_level: 'warn' }, 'system'), {
+    ...publicValues,
+    log_level: 'warn',
+  })
+  assert.equal(saved.voicemail_amr_url.endsWith('a'.repeat(32)), true)
+  assert.equal(Object.hasOwn(normalizedSettingsValues(saved), 'voicemail_upload_mode'), false)
+})
+
+test('局域网白名单关闭时阻止新启用；允许停用及保留旧配置，公网与TCP规则独立', () => {
+  const off = { ...saved, voicemail_enabled: false, device_allowlist_enabled: false }
+  assert.match(recordingEnableProblem(off, { ...off, voicemail_enabled: true }), /白名单/)
+  assert.equal(recordingEnableProblem(off, off), '')
+  assert.equal(
+    recordingEnableProblem(
+      { ...off, voicemail_enabled: true },
+      { ...off, voicemail_enabled: true },
+    ),
+    '',
+  )
+  assert.equal(
+    recordingEnableProblem(off, {
+      ...off,
+      voicemail_enabled: true,
+      voicemail_upload_mode: 'public',
+    }),
+    '',
+  )
+  assert.match(
+    recordingEnableProblem(
+      { ...off, voicemail_enabled: true, voicemail_upload_mode: 'public' },
+      { ...off, voicemail_enabled: true },
+    ),
+    /白名单/,
+  )
 })

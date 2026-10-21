@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"crypto/subtle"
+	"errors"
 	"io"
 	"mime"
 	"mime/multipart"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/Battery233/sim-harbor/internal/config"
 	"github.com/Battery233/sim-harbor/internal/diagnostics"
+	"github.com/Battery233/sim-harbor/internal/store"
 )
 
 const maxVoicemailBytes = 2 << 20
@@ -40,7 +42,16 @@ func (s *Server) receiveVoicemail(w http.ResponseWriter, r *http.Request) {
 		reply(w, 403, map[string]string{"error": "voicemail_source_rejected"})
 		return
 	}
-	expected, ok := config.VoicemailUploadToken(s.Config.VoicemailAMRURL)
+	public := s.Config.VoicemailMode() == "public"
+	if public {
+		if !s.voicemailIngress.admit(time.Now()) {
+			w.Header().Set("Retry-After", "1")
+			reply(w, 429, map[string]string{"error": "voicemail_upload_busy"})
+			return
+		}
+		defer s.voicemailIngress.release()
+	}
+	expected, ok := config.VoicemailUploadToken(s.Config.VoicemailAMRURL, s.Config.VoicemailMode())
 	got := strings.TrimPrefix(r.URL.Path, "/api/voicemail/amr/")
 	if !ok || len(got) != len(expected) || subtle.ConstantTimeCompare([]byte(got), []byte(expected)) != 1 {
 		s.Logs.Record("voicemail_rejected", diagnostics.Fields{})
@@ -55,7 +66,16 @@ func (s *Server) receiveVoicemail(w http.ResponseWriter, r *http.Request) {
 	}
 	s.notificationGate.Lock()
 	defer s.notificationGate.Unlock()
-	mediaID, createdAt, _, err := s.Store.SaveVoicemail(r.Context(), s.Config.DataDir, audio, slot, phone, start, time.Now().Unix())
+	limit := int64(0)
+	if public {
+		limit = s.Config.VoicemailStorageLimit()
+	}
+	mediaID, createdAt, _, err := s.Store.SaveVoicemail(r.Context(), s.Config.DataDir, audio, slot, phone, start, time.Now().Unix(), limit)
+	if errors.Is(err, store.ErrVoicemailCapacity) {
+		s.Logs.Record("voicemail_capacity", diagnostics.Fields{})
+		reply(w, 507, map[string]string{"error": "voicemail_storage_full"})
+		return
+	}
 	if err != nil || mediaID == "" {
 		s.Logs.Record("voicemail_rejected", diagnostics.Fields{Slot: slot})
 		reply(w, 503, map[string]string{"error": "database_unavailable"})
@@ -66,15 +86,18 @@ func (s *Server) receiveVoicemail(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) voicemailSourceOK(r *http.Request) bool {
-	if !s.Config.AllowlistEnabled() {
-		return false
-	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		return false
 	}
 	ip := net.ParseIP(host)
 	if ip == nil {
+		return false
+	}
+	if s.Config.VoicemailMode() == "public" {
+		return s.Config.AllowsVoicemailProxy(ip)
+	}
+	if !s.Config.AllowlistEnabled() {
 		return false
 	}
 	return s.Config.Allows(&net.TCPAddr{IP: ip, Port: 1})

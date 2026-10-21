@@ -85,7 +85,7 @@ async function applyVoicemail(intent) {
   if (
     voicemailConsent.value !== intent ||
     !preview.value?.ready ||
-    (intent === 'enable' && !appReady.value)
+    (intent === 'enable' && !canEnable.value)
   )
     return
   busy.value = true
@@ -127,6 +127,7 @@ function slotLine(slot) {
 }
 onUnmounted(() => flow.dispose())
 const appReady = computed(() => props.appSettings?.ready === true)
+const canEnable = computed(() => appReady.value && props.appSettings?.receivingReady === true)
 const targetAddress = computed(() => uploadAddressView(props.appSettings?.url || ''))
 const addressStatus = computed(() => {
   if (!appReady.value)
@@ -146,10 +147,7 @@ const addressStatus = computed(() => {
         TCP；部分固件修改接听方式和清除预设提示语需要设置短信。应用的提示文字在接通后下发，不保存为板子预设。</InfoTip
       >
     </h2>
-    <p
-      v-if="state && state.voicemail_enabled !== true && state.environment !== 'cloud'"
-      class="notice"
-    >
+    <p v-if="state && state.voicemail_enabled !== true" class="notice">
       应用接收服务当前未开启。请先完成上方设置并重启应用；停止板子自动接听不受影响。
     </p>
     <p class="muted tiny">先读取，再选择启用或停用并核对修改预览。上传地址沿用第一步，无需再填。</p>
@@ -179,7 +177,7 @@ const addressStatus = computed(() => {
           v-model="voicemailConsent"
           type="radio"
           value="enable"
-          :disabled="busy || uncertain || !appReady || state?.environment === 'cloud'"
+          :disabled="busy || uncertain || !canEnable"
         />启用：设置自动接听录音，并同步应用的上传地址</label
       >
       <label class="consent"
@@ -248,7 +246,7 @@ const addressStatus = computed(() => {
           uncertain ||
           !voicemailConsent ||
           !preview?.ready ||
-          (voicemailConsent === 'enable' && !appReady) ||
+          (voicemailConsent === 'enable' && !canEnable) ||
           !smsReady ||
           !state?.online ||
           (voicemail.channel === 'sms' && voicemailConsent === 'restore' && !stopAuto)

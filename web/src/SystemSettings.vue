@@ -1,7 +1,12 @@
 <script setup>
 import InfoTip from './InfoTip.vue'
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
-import { settingsSectionValues, normalizedSettingsValues } from './recording-settings.js'
+import {
+  settingsSectionValues,
+  normalizedSettingsValues,
+  recordingMode,
+  recordingEnableProblem,
+} from './recording-settings.js'
 import { createSettingsFlow, settingsSavedNote, voicemailServiceStatus } from './settings-flow.js'
 const props = defineProps({
   request: Function,
@@ -94,8 +99,33 @@ const enablingVoicemail = computed(
   () =>
     recording.value &&
     values.value.voicemail_enabled === true &&
-    snapshot.value?.values?.voicemail_enabled !== true,
+    (snapshot.value?.values?.voicemail_enabled !== true ||
+      recordingMode(values.value) !== recordingMode(snapshot.value?.values)),
 )
+const selectedMode = computed({
+  get: () => recordingMode(values.value),
+  set: (mode) => {
+    values.value.voicemail_upload_mode = mode === 'lan' ? '' : mode
+    voicemailConsent.value = false
+  },
+})
+const proxySources = computed({
+  get: () => (values.value.voicemail_proxy_cidrs || []).join('\n'),
+  set: (text) => {
+    values.value.voicemail_proxy_cidrs = text
+      .split('\n')
+      .map((x) => x.trim())
+      .filter(Boolean)
+  },
+})
+const storageMiB = computed({
+  get: () => values.value.voicemail_max_storage_mib || 512,
+  set: (value) => {
+    values.value.voicemail_max_storage_mib = Number(value)
+  },
+})
+const enableProblem = computed(() => recordingEnableProblem(snapshot.value?.values, values.value))
+const reception = computed(() => snapshot.value?.voicemail_reception)
 const canSave = computed(
   () =>
     snapshot.value &&
@@ -104,6 +134,7 @@ const canSave = computed(
     !restarting.value &&
     !props.locked &&
     consent.value &&
+    !enableProblem.value &&
     (!enablingVoicemail.value || voicemailConsent.value),
 )
 const editedValues = computed(() =>
@@ -136,6 +167,7 @@ watch(
       !uncertain.value &&
       !restarting.value,
     url: snapshot.value?.values?.voicemail_amr_url || '',
+    receivingReady: reception.value?.ready === true,
   }),
   (status) => emit('configuration-status', status),
   { immediate: true },
@@ -151,7 +183,9 @@ function fillVoicemailURL() {
   const bytes = new Uint8Array(16)
   crypto.getRandomValues(bytes)
   const token = [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('')
-  values.value.voicemail_amr_url = `http://192.168.31.x:18880/api/voicemail/amr/${token}?slot={{slot}}&start={{telStartTs}}&phone={{phNum|$urlEncode()}}`
+  const origin =
+    selectedMode.value === 'public' ? 'https://upload.example.com' : 'http://192.168.31.x:18880'
+  values.value.voicemail_amr_url = `${origin}/api/voicemail/amr/${token}?slot={{slot}}&start={{telStartTs}}&phone={{phNum|$urlEncode()}}`
   voicemailConsent.value = false
 }
 function adopt(data) {
@@ -289,11 +323,7 @@ onUnmounted(() => {
       }}</span>
     </div>
     <p v-if="recording" class="muted">
-      <span v-if="state?.environment !== 'cloud'">录音接收目前仅支持本地部署。</span>
       先设置应用，再设置板子。上传地址只填一次；两步分别确认，保存应用设置不会修改板子或发送短信。
-    </p>
-    <p v-if="recording && state?.environment === 'cloud'" class="notice">
-      当前云端暂不支持接收录音，请保持接收服务关闭。下方仍可读取板子上传地址并执行停用；已有配置会原样保留。
     </p>
     <p v-if="error" class="notice error" role="alert">{{ error }}</p>
     <p v-if="note" class="notice" role="status">{{ note }}</p>
@@ -421,6 +451,11 @@ onUnmounted(() => {
             </InfoTip>
           </h3>
           <p class="notice">{{ voicemailStatus }}</p>
+          <p v-if="reception" class="tiny muted">
+            当前生效的上传方式：{{
+              reception.mode === 'public' ? '公网入口（HTTPS）' : '局域网直连（HTTP）'
+            }}。保存后的变更需重启应用生效。
+          </p>
           <p v-if="!values.voicemail_enabled" class="notice">
             关闭应用并重启后，不再播放提示语或接收新录音，已有录音保留。板子仍可能接听和上传；彻底停用还需执行下方第二步。
           </p>
@@ -428,11 +463,38 @@ onUnmounted(() => {
             ><input
               v-model="values.voicemail_enabled"
               type="checkbox"
-              :disabled="state?.environment === 'cloud' && !values.voicemail_enabled"
               @change="voicemailConsent = false"
             />开启录音接收与接通提示语（保存并重启后生效）</label
           >
           <div class="recording-fields">
+            <label
+              >上传方式<select v-model="selectedMode">
+                <option value="lan">局域网直连（HTTP）</option>
+                <option value="public">公网入口（HTTPS）</option>
+              </select></label
+            >
+            <p class="tiny muted">
+              切换方式不会替换现有地址或令牌，也不会修改板子。请核对地址后保存。
+            </p>
+            <div v-if="selectedMode === 'lan'" class="notice">
+              <template v-if="reception">
+                当前生效的设备来源白名单：{{ reception.allowlist_enabled ? '已开启' : '未开启' }}。
+                <template v-if="reception.allowlist_enabled"
+                  >允许来源：{{ reception.device_cidrs.join('、') }}。</template
+                >
+                <template v-else>白名单关闭时，录音上传会被拒绝。</template>
+              </template>
+              <template v-else>尚未读到当前生效的设备来源白名单，请重新读取配置。</template>
+              <span v-if="snapshot.pending_restart"
+                >有配置待重启；这里显示的是重启前的实际状态。</span
+              >
+              如需修改，请到“系统配置 → 高级连接设置”，保存后重启应用，并重新读取本页。
+            </div>
+            <p v-if="enableProblem" class="notice error" role="alert">{{ enableProblem }}</p>
+            <p v-if="selectedMode === 'public'" class="notice">
+              板子填写公网 HTTPS 上传地址，Tunnel 可用本机 HTTP
+              转发。只开放录音上传路径，不要求邮箱登录；管理页面继续保持保护。
+            </p>
             <p class="tiny muted">
               目标卡槽：开启或停用板子设置时使用这些卡槽；留空不会默认修改两张卡。
             </p>
@@ -462,11 +524,15 @@ onUnmounted(() => {
             </label>
             <p class="tiny muted">接通后只播放一遍，播完不挂断；不会改写板子预设提示语。</p>
             <label
-              >上传地址（局域网 HTTP）<input
+              >板子录音上传地址<input
                 v-model="values.voicemail_amr_url"
                 type="text"
                 maxlength="500"
-                placeholder="http://192.168.31.10:18880/api/voicemail/amr/…"
+                :placeholder="
+                  selectedMode === 'public'
+                    ? 'https://upload.example.com/api/voicemail/amr/…'
+                    : 'http://192.168.31.10:18880/api/voicemail/amr/…'
+                "
               />
             </label>
             <button v-if="!values.voicemail_amr_url" type="button" @click="fillVoicemailURL">
@@ -476,9 +542,43 @@ onUnmounted(() => {
               现有地址和令牌会保留。修改后请保存并重启应用，再在第二步同步到板子。
             </p>
             <p class="tiny muted">
-              地址使用运行本应用的主机局域网 IP 和端口。使用模板时，请替换其中的 x。
-              下方会读取板子实际使用的地址，供你核对。
+              {{
+                selectedMode === 'public'
+                  ? '使用你自己的 HTTPS 上传域名，模板中的 example.com 需替换。'
+                  : '使用运行本应用的主机局域网 IP 和端口，模板中的 x 需替换。'
+              }}
+              地址中的随机令牌就是上传凭据，无需另填。请保密，不要删除关联参数。下方会读取板子地址，按完整地址核对。
             </p>
+            <details v-if="selectedMode === 'public'" class="settings-group settings-advanced">
+              <summary>公网接收保护</summary>
+              <label
+                >允许转发录音的代理 IP（每行一个 /32 或 /128）<textarea
+                  v-model="proxySources"
+                  rows="3"
+                  placeholder="留空只允许 127.0.0.1/32 和 ::1/128"
+                />
+              </label>
+              <p class="tiny muted">
+                填写应用实际看到的 cloudflared 或反向代理地址，只允许单个内网或本机 IP。Docker
+                转发可能显示网桥网关地址；不要填板子公网 IP 或 Cloudflare 公网网段。TCP
+                白名单保持独立，不受这里影响。
+              </p>
+              <label
+                >录音目录容量上限（MiB）<input
+                  v-model="storageMiB"
+                  type="number"
+                  min="16"
+                  max="65536"
+                  step="1"
+              /></label>
+              <p class="tiny muted">
+                默认 512 MiB。达到容量或 10000
+                条索引上限后拒收新录音，保留旧文件；重复上传仍去重。单次录音最多 2 MiB，同时接收最多
+                2 个请求，允许短时 10 次请求、持续每分钟 60 次。这里不会自动删除录音。已配置 Bark
+                时，容量达到一半及此后每增加 32 MiB 会提醒；默认提醒点为 256、288、320
+                MiB，依次递增。
+              </p>
+            </details>
           </div>
           <label v-if="enablingVoicemail" class="consent"
             ><input

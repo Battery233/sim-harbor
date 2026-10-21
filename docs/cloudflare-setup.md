@@ -45,3 +45,8 @@ Access 与应用管理员 Token 共同保护入口。保持宿主 HTTP 回环监
 板子接入使用云端部署指南中的独立原生 TCP 入口。Cloudflare 的普通 TCP 应用访问采用客户端 `cloudflared` 等转发方式，使用时需有相应客户端支持。[官方 TCP 说明](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/non-http/cloudflared-authentication/arbitrary-tcp/)。
 
 Tunnel 中的 Private CIDR 为 Cloudflare 客户端提供指定 IP/网段的私网路由；应用的设备来源白名单则负责筛选接入连接，两者各自配置。维护 Private CIDR 时，结合使用该路由的客户端和网络策略核对。[CIDR 路由说明](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/private-net/cloudflared/connect-cidr/)。
+
+
+## 可选的录音上传入口
+
+v1.1.1-rc.4 起的公网录音功能使用单独的 HTTPS 上传域名，不改变已有管理域名的 Access。只将录音路径转发到应用，不要求邮箱登录或交互式挑战；不要将整站和管理 API 一起开放。路由示例见[录音入口配置](../deploy/cloudflared-upload.example.yml)，代理 IP、令牌、限流及容量规则见[公网录音接收](voicemail.md#公网录音接收)。已发布 rc.3 及更早版本不支持此模式。

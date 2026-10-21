@@ -3,7 +3,25 @@ export const recordingFields = [
   'voicemail_slots',
   'voicemail_tts',
   'voicemail_amr_url',
+  'voicemail_upload_mode',
+  'voicemail_proxy_cidrs',
+  'voicemail_max_storage_mib',
 ]
+
+export function recordingMode(values) {
+  return values?.voicemail_upload_mode || 'lan'
+}
+
+export function recordingEnableProblem(saved, edited) {
+  if (
+    edited?.voicemail_enabled !== true ||
+    recordingMode(edited) !== 'lan' ||
+    edited.device_allowlist_enabled !== false
+  )
+    return ''
+  if (saved?.voicemail_enabled === true && recordingMode(saved) === 'lan') return ''
+  return '局域网上传需要开启设备来源白名单。请到“系统配置 → 高级连接设置”设置，再重新读取本页。'
+}
 
 export function normalizedSettingsValues(values) {
   return {

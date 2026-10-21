@@ -152,7 +152,6 @@ export function voicemailPlan(intent, observed, running) {
   const configured = Array.isArray(running?.slots)
     ? running.slots.filter((slot) => slot === 1 || slot === 2)
     : []
-  const cloud = running?.environment === 'cloud'
   const held = []
   if (!running) held.push('尚未读到应用设置，请重新读取。本次不会执行修改。')
   if (intent === 'enable' && running && running.enabled !== true)
@@ -168,11 +167,10 @@ export function voicemailPlan(intent, observed, running) {
   if (configured.length === 0 && running && !inferRestoreSlots)
     held.push('应用尚未选定留言卡槽。本次不会执行修改。')
   if (intent === 'enable' && running && running.url_configured === false)
-    held.push('应用尚未设置接收录音的局域网地址。本次不会执行修改。')
-  if (cloud && intent === 'enable') held.push('云端暂不支持接收录音，不能开启。')
-  const blocked = held.concat(
-    cloud && intent === 'restore' ? ['云端暂不支持接收录音，仍可停止板子自动接听。'] : [],
-  )
+    held.push('应用尚未设置接收录音的上传地址。本次不会执行修改。')
+  if (intent === 'enable' && running?.receiving_ready === false && running?.enabled === true)
+    held.push('当前录音接收条件未满足，请核对设备来源白名单。本次不会执行修改。')
+  const blocked = held
   const willWrite = held.length === 0
   let smsCount = 0
   let clearsTTS = false
@@ -237,7 +235,7 @@ export function voicemailPlan(intent, observed, running) {
   } else if (running?.url_matches === true) {
     lines.push('上传地址：与应用设置一致，无需修改。')
   } else if (running) {
-    lines.push('上传地址：改为应用设置中的局域网地址，不发短信。')
+    lines.push('上传地址：改为应用设置中的上传地址，不发短信。')
   }
   const summary = blocked.concat(lines)
   return {
@@ -248,7 +246,6 @@ export function voicemailPlan(intent, observed, running) {
     clearsTTS,
     clearsURL,
     slots: touched,
-    cloud,
     text: summary.join('\n'),
   }
 }

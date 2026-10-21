@@ -39,7 +39,7 @@
 | `data_directory` | SQLite、统一配置与日志所在目录；容器全新部署 `/data` |
 | `static_directory` | 前端产物目录；容器 `/app/web/dist`，源码 `web/dist` |
 | `device_id` | 允许接入的板子编号，配合来源规则与加密参数使用 |
-| `device_cidrs` | TCP 来源网段；单 IPv4 用 `/32`，IPv6 用 `/128` |
+| `device_cidrs` | TCP 来源网段，局域网录音上传也使用此规则；单 IPv4 用 `/32`，IPv6 用 `/128` |
 | `device_allowlist_enabled` | 启用后按 `device_cidrs` 筛选 TCP 连接来源 |
 | `aes_mode` | 两端一致，Key 与 IV 各 16 字节，见[安全说明](../SECURITY.md) |
 | `public_url` | 手机能访问的管理入口；用于通知详情链接 |
@@ -52,7 +52,10 @@
 | `voicemail_enabled` | 留言开关，默认关闭。开启需网页二次确认并重启；应用和板子选项集中在“录音配置”，板子参数另行确认下发。见[留言](voicemail.md) |
 | `voicemail_slots` | 允许自动接听并录音的卡槽，取 1 和/或 2 |
 | `voicemail_tts` | 接通后由 Harbor 用 TCP `telstarttts` 播放一次的提示音，最长 274 个字符。启用确认不把这段文字写成板子预设 |
-| `voicemail_amr_url` | 板子可访问的局域网 HTTP 上传地址，须带端口和路径令牌 |
+| `voicemail_amr_url` | 板子可访问的完整上传地址；路径令牌就是上传凭据，无单独令牌字段 |
+| `voicemail_upload_mode` | v1.1.1-rc.4 起支持：缺省或 `lan` 为局域网 HTTP，`public` 为经受控代理的公网 HTTPS；独立于 `environment` |
+| `voicemail_proxy_cidrs` | 公网模式允许的代理 IP，最多 16 个单 IP `/32` 或 `/128`，只接受私网或回环地址；缺省只信任 `127.0.0.1/32` 和 `::1/128`，显式填写后替代默认值 |
+| `voicemail_max_storage_mib` | 公网录音目录容量上限，缺省 512 MiB，可设 16～65536；达到容量或 10000 条索引上限时拒收新文件，不自动清理；已配置 Bark 时，达到一半及其后每增加 32 MiB 提醒 |
 | `outbound_enabled` | 短信外发开关，默认关闭；恢复保护优先 |
 | `send_interval_seconds` | 每卡发送间隔，默认 60 秒，可配置 10～86400 秒 |
 | `send_daily_limit` | 每卡每日尝试次数上限，默认 5 次，可配置 1～100 次 |
@@ -60,7 +63,7 @@
 
 初始化环境变量名为 `SIM_ADMIN_TOKEN`、`SIM_AES_KEY`、`SIM_AES_IV`、`SIM_BARK_KEY`，JSON 通过对应 `*_env` 字段引用。管理员 Token 至少 24 字符。
 
-v1.1.0 新增的留言字段不要求旧实例补填；缺少 `voicemail_enabled` 时默认关闭，其他业务配置继续使用原值。各部署示例均显式关闭留言，云端保持关闭。配置兼容不表示数据库可直接降级，schema 19 的备份与回退要求见[升级说明](releases.md#从-v104-升级到-v110)。
+v1.1.0 新增的留言字段不要求旧实例补填；缺少 `voicemail_enabled` 时默认关闭，其他业务配置继续使用原值。各部署示例均显式关闭留言。v1.1.1-rc.4 可主动开启公网接收，既有实例不会因此自动改变模式或板子设置。配置兼容不表示数据库可直接降级，schema 19 的备份与回退要求见[升级说明](releases.md#从-v104-升级到-v110)。
 
 ### 自定义鉴权请求头
 
@@ -96,6 +99,8 @@ X-SIMHarbor-Authorization: Bearer <管理token>
 Docker 宿主端口由 `.env` 和 Compose 设置，容器监听由 JSON 设置。安装指南与 `deploy/.env.example` 推荐宿主 HTTP/TCP 为 `18880/39090`；容器内部仍为 `8080/9000`。基础 Compose 在未指定端口变量时回退到宿主 `8080/9000`，部署时沿用自己的 `.env` 即可。例如 `127.0.0.1:18880 → 8080` 与 `0.0.0.0:39090 → 9000` 可同时使用；后者是否可达还取决于防火墙和安全组。
 
 设备来源规则依据原生 TCP 对端地址。设备规则与 Cloudflare 网页访问规则分别配置；可结合来源限制、传输模式和网络策略管理设备入口，见[安全说明](../SECURITY.md#设备通道)。
+
+公网模式的代理地址与 TCP 白名单分别配置。应用检查实际 HTTP 对端，不依据 `X-Forwarded-For` 或 `CF-Connecting-IP` 放行；HTTPS 在代理入口终止，应用内部可以继续 HTTP。完整部署边界见[公网录音接收](voicemail.md#公网录音接收)。
 
 ## 日志保留
 

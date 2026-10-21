@@ -55,6 +55,10 @@ func (s *Server) handleVoicemailBoard(w http.ResponseWriter, r *http.Request, ac
 			reply(w, 409, map[string]string{"error": "voicemail_disabled"})
 			return
 		}
+		if intent == "enable" && !s.Config.VoicemailReceptionReady() {
+			reply(w, 409, map[string]string{"error": "voicemail_allowlist_required"})
+			return
+		}
 	}
 	if !s.sendGate.TryLock() {
 		reply(w, 409, map[string]string{"error": "send_in_progress"})
@@ -180,11 +184,13 @@ func (s *Server) voicemailRunning(current voicemailBoardState) map[string]any {
 	slots := []int{}
 	slots = append(slots, s.Config.VoicemailSlots...)
 	return map[string]any{
-		"enabled":        s.Config.VoicemailEnabled,
-		"slots":          slots,
-		"environment":    s.Config.Environment,
-		"url_configured": s.Config.VoicemailAMRURL != "",
-		"url_matches":    s.Config.VoicemailAMRURL != "" && current.AMRURL == s.Config.VoicemailAMRURL,
+		"enabled":         s.Config.VoicemailEnabled,
+		"slots":           slots,
+		"environment":     s.Config.Environment,
+		"upload_mode":     s.Config.VoicemailMode(),
+		"receiving_ready": s.Config.VoicemailReceptionReady(),
+		"url_configured":  s.Config.VoicemailAMRURL != "",
+		"url_matches":     s.Config.VoicemailAMRURL != "" && current.AMRURL == s.Config.VoicemailAMRURL,
 	}
 }
 

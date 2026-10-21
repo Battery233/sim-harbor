@@ -304,7 +304,7 @@ test('启用和恢复预览按卡槽给出短信条数，且不含密码或原�
   assert.equal(idle.smsCount, 0)
   assert.equal(idle.clearsTTS, false)
   assert.equal(idle.clearsURL, false)
-  assert.match(idle.text, /云端暂不支持接收录音/)
+  assert.doesNotMatch(idle.text, /云端暂不支持接收录音/)
   const encoded = JSON.stringify(voicemailPlan('restore', unknown, { enabled: true, slots: [2] }))
   assert.doesNotMatch(encoded, /000000|\*#slot|sms_password/)
   const notRunning = voicemailPlan('enable', unknown, {
@@ -324,7 +324,7 @@ test('启用和恢复预览按卡槽给出短信条数，且不含密码或原�
     url_configured: false,
   })
   assert.equal(noURL.smsCount, 0)
-  assert.match(noURL.text, /尚未设置接收录音的局域网地址/)
+  assert.match(noURL.text, /尚未设置接收录音的上传地址/)
   assert.match(voicemailPlan('enable', unknown, { enabled: false, slots: [] }).text, /不会执行修改/)
 })
 
@@ -358,7 +358,7 @@ test('关闭应用且未选卡槽时，TCP 恢复预览列出实际恢复范围'
   const cloud = voicemailPlan('restore', observed, { ...running, environment: 'cloud' })
   assert.equal(cloud.ready, true)
   assert.deepEqual(cloud.slots, [1])
-  assert.match(cloud.text, /云端暂不支持接收录音，仍可停止板子自动接听/)
+  assert.doesNotMatch(cloud.text, /云端暂不支持接收录音/)
 })
 
 test('TCP 无卡槽恢复仍可单独清空上传地址，已恢复的卡槽不重复修改', () => {
@@ -412,4 +412,37 @@ test('没有运行配置或短信通道未选卡槽时，恢复预览不可执�
     assert.deepEqual(plan.slots, [])
     assert.match(plan.text, /本次不修改上传地址/)
   }
+})
+
+test('公网模式可预览启用，局域网接收条件不满足时禁止启用且仍可停用', () => {
+  const observed = {
+    channel: 'tcp',
+    amr_url: '',
+    slots: [
+      { slot: 1, mode: 0, tts: '' },
+      { slot: 2, mode: 0, tts: '' },
+    ],
+  }
+  const running = {
+    enabled: true,
+    slots: [1],
+    environment: 'cloud',
+    upload_mode: 'public',
+    receiving_ready: true,
+    url_configured: true,
+  }
+  const plan = voicemailPlan('enable', observed, running)
+  assert.equal(plan.ready, true)
+  assert.match(plan.text, /应用设置中的上传地址/)
+  const rejected = voicemailPlan('enable', observed, {
+    ...running,
+    upload_mode: 'lan',
+    receiving_ready: false,
+  })
+  assert.equal(rejected.ready, false)
+  assert.match(rejected.text, /白名单/)
+  assert.equal(
+    voicemailPlan('restore', observed, { ...running, receiving_ready: false }).ready,
+    true,
+  )
 })

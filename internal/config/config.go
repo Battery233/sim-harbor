@@ -9,7 +9,6 @@ import (
 	"net/netip"
 	"net/url"
 	"os"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -54,6 +53,9 @@ type Config struct {
 	Allowed                []netip.Prefix `json:"-"`
 	Location               *time.Location `json:"-"`
 	Credentials            *Credentials   `json:"credentials,omitempty"`
+	VoicemailUploadMode    string         `json:"voicemail_upload_mode,omitempty"`
+	VoicemailProxyCIDRs    []string       `json:"voicemail_proxy_cidrs,omitempty"`
+	VoicemailMaxStorageMiB int64          `json:"voicemail_max_storage_mib,omitempty"`
 	VoicemailEnabled       bool           `json:"voicemail_enabled"`
 	VoicemailSlots         []int          `json:"voicemail_slots,omitempty"`
 	VoicemailTTS           string         `json:"voicemail_tts,omitempty"`
@@ -212,9 +214,10 @@ func (c *Config) Validate() error {
 	return c.normalizeVoicemail()
 }
 
-var voicemailTokenPattern = regexp.MustCompile(`^[0-9a-f]{32,64}$`)
-
 func (c *Config) normalizeVoicemail() error {
+	if err := c.validateVoicemailIngress(); err != nil {
+		return err
+	}
 	if len(c.VoicemailSlots) > 2 {
 		return errors.New("invalid voicemail slots")
 	}
@@ -229,46 +232,13 @@ func (c *Config) normalizeVoicemail() error {
 	if c.VoicemailTTS != "" && (utf8.RuneCountInString(c.VoicemailTTS) > 274 || strings.ContainsAny(c.VoicemailTTS, "\x00\r\n")) {
 		return errors.New("invalid voicemail prompt")
 	}
-	if c.VoicemailAMRURL != "" && validateVoicemailURL(c.VoicemailAMRURL) != nil {
+	if c.VoicemailAMRURL != "" && validateVoicemailURL(c.VoicemailAMRURL, c.VoicemailMode()) != nil {
 		return errors.New("invalid voicemail upload URL")
 	}
 	if c.VoicemailEnabled && (len(c.VoicemailSlots) == 0 || strings.TrimSpace(c.VoicemailTTS) == "" || c.VoicemailAMRURL == "") {
-		return errors.New("voicemail requires slots, prompt and LAN upload URL")
+		return errors.New("voicemail requires slots, prompt and upload URL")
 	}
 	return nil
-}
-
-// A non-empty upload URL must be an explicit-port HTTP address on a private or
-// loopback IPv4 host. Hostnames, including public tunnel names, are rejected.
-func validateVoicemailURL(raw string) error {
-	if raw == "" || strings.EqualFold(raw, "clear") || len(raw) <= 10 || len(raw) > 500 {
-		return errors.New("invalid voicemail upload URL")
-	}
-	u, err := url.Parse(raw)
-	if err != nil || u.Scheme != "http" || u.Host == "" || u.Hostname() == "" || u.User != nil || u.Fragment != "" || u.Port() == "" {
-		return errors.New("invalid voicemail upload URL")
-	}
-	port, err := strconv.Atoi(u.Port())
-	if err != nil || port < 1 || port > 65535 {
-		return errors.New("invalid voicemail upload URL")
-	}
-	ip := net.ParseIP(u.Hostname())
-	if ip == nil || ip.To4() == nil || (!ip.IsPrivate() && !ip.IsLoopback()) {
-		return errors.New("invalid voicemail upload URL")
-	}
-	token := strings.TrimPrefix(u.Path, "/api/voicemail/amr/")
-	if !strings.HasPrefix(u.Path, "/api/voicemail/amr/") || strings.Contains(token, "/") || !voicemailTokenPattern.MatchString(token) {
-		return errors.New("invalid voicemail upload URL")
-	}
-	return nil
-}
-
-func VoicemailUploadToken(raw string) (string, bool) {
-	if validateVoicemailURL(raw) != nil {
-		return "", false
-	}
-	u, _ := url.Parse(raw)
-	return strings.TrimPrefix(u.Path, "/api/voicemail/amr/"), true
 }
 
 func (c Config) Allows(addr net.Addr) bool {

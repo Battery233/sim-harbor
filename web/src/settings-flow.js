@@ -22,6 +22,8 @@ export const settingsErrors = {
   settings_conflict: '配置已被其他页面修改，请重新读取后核对。',
   settings_confirmation_required: '请先核对配置并勾选确认。',
   voicemail_confirmation_required: '请勾选留言确认，了解自动接听录音可能产生通话费用。',
+  voicemail_allowlist_required:
+    '局域网上传需要开启设备来源白名单。请到系统配置核对，保存并重启后再启用板子。',
   invalid_settings:
     '配置未通过校验：请核对地址、白名单、AES长度、管理凭据长度、鉴权请求头名称和数值范围。',
   settings_restart_unavailable: '当前运行入口不支持网页重启。',

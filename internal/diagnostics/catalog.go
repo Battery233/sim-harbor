@@ -72,6 +72,11 @@ var catalog = map[string]Definition{
 	"notification_failed":             {"warn", "notification", "通知请求未被确认接受"},
 	"notification_queue_failed":       {"error", "notification", "通知队列读取失败"},
 	"notification_persistence_failed": {"error", "notification", "通知结果保存失败；后续尝试可能重复通知"},
+
+	"voicemail_capacity":                    {"warn", "call", "录音容量已达上限，新录音未保存"},
+	"voicemail_capacity_observation_failed": {"warn", "notification", "录音容量提醒状态暂时无法读取或保存"},
+	"voicemail_capacity_notified":           {"info", "notification", "录音容量提醒已被 Bark 接受"},
+	"voicemail_capacity_notify_failed":      {"warn", "notification", "录音容量提醒推送未确认，将退避重试"},
 }
 
 var outcomes = map[string]bool{

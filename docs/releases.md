@@ -1,15 +1,15 @@
 # 版本发布、Docker 更新与验证
 
-正式版本采用 `主版本.次版本.修订号`，候选版本在末尾加 `-rc.N`，其中 N 从 1 开始递增。当前源码为候选版 `1.1.1-rc.3`，对应标签 `v1.1.1-rc.3` 和镜像标签 `1.1.1-rc.3`；稳定版仍为 `1.1.0`。应用在已认证的 `/api/state` 和健康接口 `/api/health` 返回 `version`，用于核对实际运行版本。
+正式版本采用 `主版本.次版本.修订号`，候选版本在末尾加 `-rc.N`，其中 N 从 1 开始递增。当前源码为候选版 `1.1.1-rc.4`，对应标签 `v1.1.1-rc.4` 和镜像标签 `1.1.1-rc.4`；稳定版仍为 `1.1.0`。应用在已认证的 `/api/state` 和健康接口 `/api/health` 返回 `version`，用于核对实际运行版本。
 
 ## 标签、Release 与镜像的关系
 
 | 项目 | 作用 | 创建方式 |
 | --- | --- | --- |
-| 应用版本 `1.1.1-rc.3` | 网页和 API 显示的运行版本 | 在源码与构建配置中维护 |
-| Git 标签 `v1.1.1-rc.3` | 固定本版源码对应的提交 | 本地创建后推送，或在 GitHub 发布页面创建 |
+| 应用版本 `1.1.1-rc.4` | 网页和 API 显示的运行版本 | 在源码与构建配置中维护 |
+| Git 标签 `v1.1.1-rc.4` | 固定本版源码对应的提交 | 本地创建后推送，或在 GitHub 发布页面创建 |
 | GitHub Release | 展示版本说明、源码包及附件 | 在 Releases 页面基于标签发布 |
-| GHCR 镜像 `:1.1.1-rc.3` | Docker 安装与更新使用的构建产物 | `Release image` 工作流构建并上传 |
+| GHCR 镜像 `:1.1.1-rc.4` | Docker 安装与更新使用的构建产物 | `Release image` 工作流构建并上传 |
 
 当前 [Release image 工作流](../.github/workflows/release.yml)仅在收到 `v*` 标签推送后运行，负责镜像验证与发布；Release 页面由维护者另外填写和发布。本地提交、普通 `main` 分支推送均不触发镜像上传，当前也没有手动触发或定时发布入口。
 
@@ -27,7 +27,7 @@
    git log -1 --oneline
    ```
 
-   使用 GitHub Desktop 时，先推送 `main`，再在 History 中选中定版提交，通过 Create Tag 创建 `v1.1.1-rc.3` 并推送标签。不要假定在命令行创建的标签会随 Desktop 推送分支一并上传。已有同名标签时先核对指向；发布标签必须对应最终定版提交。已发布版本保持固定，后续修正使用新提交及相应版本。
+   使用 GitHub Desktop 时，先推送 `main`，再在 History 中选中定版提交，通过 Create Tag 创建 `v1.1.1-rc.4` 并推送标签。不要假定在命令行创建的标签会随 Desktop 推送分支一并上传。已有同名标签时先核对指向；发布标签必须对应最终定版提交。已发布版本保持固定，后续修正使用新提交及相应版本。
 5. 打开 Actions → Release image，等待验证与发布成功，并核对镜像的 amd64/arm64 架构清单。工作流成功后再检查 Packages 中对应镜像版本。
 6. 在 GitHub 的 Releases → Create a new release 中选择已有标签，填写标题和本版说明。RC 版本标记为预发布，不设为最新正式版，再 Publish release。也可在该页面创建新标签并选择目标提交，再发布以触发构建，步骤见 [GitHub 官方指南](https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository)。
 7. 分享镜像时核对 GHCR 包的可见性；公开使用测试匿名拉取，私有分享准备相应读取权限。复用与分发按 README 的许可说明处理。
@@ -40,9 +40,9 @@ GitHub Release、镜像发布与云端部署各有独立结果，按上述顺序
 
 ```sh
 git fetch origin --tags
-git checkout --detach v1.1.1-rc.3
-docker build --platform linux/amd64 -t sim-harbor:1.1.1-rc.3 .
-docker image inspect sim-harbor:1.1.1-rc.3 --format '{{.Os}}/{{.Architecture}}'
+git checkout --detach v1.1.1-rc.4
+docker build --platform linux/amd64 -t sim-harbor:1.1.1-rc.4 .
+docker image inspect sim-harbor:1.1.1-rc.4 --format '{{.Os}}/{{.Architecture}}'
 ```
 
 尚未发布标签时，也可从已经核对的远端提交构建；记录实际提交 SHA，便于后续对应源码与镜像。
@@ -52,8 +52,8 @@ docker image inspect sim-harbor:1.1.1-rc.3 --format '{{.Os}}/{{.Architecture}}'
 使用已成功发布的包时：
 
 ```sh
-docker pull ghcr.io/battery233/sim-harbor:1.1.1-rc.3
-docker buildx imagetools inspect ghcr.io/battery233/sim-harbor:1.1.1-rc.3
+docker pull ghcr.io/battery233/sim-harbor:1.1.1-rc.4
+docker buildx imagetools inspect ghcr.io/battery233/sim-harbor:1.1.1-rc.4
 ```
 
 确认包含目标架构。生产环境可进一步固定镜像清单摘要，使升级和回退目标可追溯。私有包使用具备 `read:packages` 权限的凭据在主机私密登录。
@@ -62,15 +62,17 @@ docker buildx imagetools inspect ghcr.io/battery233/sim-harbor:1.1.1-rc.3
 
 下面沿用[Docker 安装](deployment-docker.md)中的项目名 `sim` 与 `deploy/site.private.yaml`。既有实例按实际参数操作：例如原项目名为 `sim-cloud`、覆盖文件为 `deploy/cloud.private.yaml`，就将下文所有相应参数一并替换为原值。项目名、端口、数据卷和数据目录保持一致。
 
-### 从 v1.1.0 试用 v1.1.1-rc.3
+### 从 v1.1.0 试用 v1.1.1-rc.4
 
-本候选版将应用留言与板子接听上传集中到“录音配置”，将心跳设置移至运行诊断、板子本地存储及历史查询移至数据维护。上传地址只在应用设置中编辑，板子实际值通过 TCP 读取核对；保存与下发仍分别确认，录音仍仅支持本地部署。rc.3 在录音配置底部增加未关联录音列表，可查看上传信息与文件状态、播放和下载；运行诊断按板子心跳间隔、最近一次原始状态、诊断概览、最近事件排列。
+本候选版保留此前录音配置、运行诊断和数据维护布局，以及未关联录音的查看、播放和下载；新增可选的 HTTPS 公网录音接收。公网入口只接受指定代理及地址中的路径令牌，具备限流、并发和容量保护。录音目录默认容量为 512 MiB，配置 Bark 后，从容量一半起每增加 32 MiB 提醒；不会自动删除文件。具体部署和限制见[公网录音接收](voicemail.md#公网录音接收)。
 
-v1.1.0、v1.1.1-rc.1、v1.1.1-rc.2 与本候选版使用相同的配置格式和 schema 19，不新增数据库迁移；旧实例不需要修改配置或重新下发板子设置，已有上传地址、令牌和卡槽选择保留。试用时沿用原配置、完整 Compose 文件及数据卷，仅把版本覆盖文件的镜像改为 `ghcr.io/battery233/sim-harbor:1.1.1-rc.3` 后重建服务；无需执行 `restore` 或重新完成迁移确认。镜像需在对应标签的工作流成功后核对使用。
+v1.1.0、前三个候选版与本候选版均使用 schema 19，不新增数据库迁移。旧配置可原样读取，缺少上传方式时保持局域网 HTTP，已有开关、地址、令牌、卡槽及设备白名单保留；无需为升级重新设置板子。沿用原配置、完整 Compose 文件及数据卷，仅把版本覆盖文件的镜像改为 `ghcr.io/battery233/sim-harbor:1.1.1-rc.4` 后重建服务，无需执行 `restore` 或重新完成迁移确认。镜像需在对应标签的工作流成功后核对使用。
 
-需要结束试用时，保留最新数据并核对配置，可沿用原卷和配置切回已发布的 `1.1.0` 镜像；这不代表可以切回数据库不兼容的 v1.0.4。若从 v1.0.4 或更早版本直接试用候选版，仍会迁移至 schema 19，须遵守下方升级前备份及回退要求。
+公网接收需由操作者主动配置 HTTPS 上传域名、代理来源和应用选项，保存并重启后再单独确认板子设置。升级本身不会开启录音、修改 Tunnel 或向板子发短信。网页、离线合成与代理转发测试不能代替实体板子经 Tunnel 上传、关联及通知的完整链路验收。
 
-候选版使用独立的镜像标签，不覆盖 `1.1.0`，也不会生成 `latest`。试用后核对网页版本为 `1.1.1-rc.3`、容器健康、历史与配置、双卡状态，以及录音配置底部的未关联录音列表、运行诊断和数据维护的布局。界面验证不需要实际开启自动接听或发送短信。
+结束试用时，数据库可沿用原卷交给 v1.1.0，但须先按[公网配置兼容性](#公网录音配置的兼容性)核对并移除旧版不识别的新配置字段；不能把“schema 相同”理解为配置可直接回退。若从 v1.0.4 或更早版本直接试用，仍会迁移至 schema 19，不能直接切回旧版，须遵守下方备份与回退要求。
+
+候选镜像使用独立标签，不覆盖 `1.1.0`，也不生成 `latest`。试用后核对网页版本为 `1.1.1-rc.4`、容器健康、历史与配置、双卡状态，以及录音配置的上传方式、当前生效白名单和公网保护项；已有录音的查看、播放和下载应保持正常。普通升级验收不需要实际启用自动接听或发送短信。
 
 ### 从 v1.0.4 升级到 v1.1.0
 
@@ -136,7 +138,7 @@ v1.0.4 增加[允许分片时间差的组装](protocol-notes.md#允许分片时�
 ```yaml
 services:
   sim:
-    image: sim-harbor:1.1.1-rc.3
+    image: sim-harbor:1.1.1-rc.4
 ```
 
 使用 GHCR 时将 image 换成已验证的完整镜像引用。这个文件集中设置发布镜像，端口、配置、数据挂载与运行策略沿用原文件。旧私有文件若固定了 `sim:旧版本`，本文件必须放在最后以使新镜像生效。
@@ -162,7 +164,7 @@ docker compose --env-file .env -p sim \
 
 ### 4. 升级验收
 
-- 容器健康、镜像版本/架构正确；网页或已认证 API 的 `version` 为 `1.1.1-rc.3`。
+- 容器健康、镜像版本/架构正确；网页或已认证 API 的 `version` 为 `1.1.1-rc.4`。
 - 数据目录、卷、HTTP/TCP 端口及私有配置未意外变化；历史、卡名称、备注和推送开关保持。
 - 板子重连后查询新鲜状态，确认当前会话、两卡身份和注册情况。
 - 自然到达的短信能入库，按卡通知和点击链接正常；如需 Bark 连接测试，由操作者确认执行。
@@ -193,3 +195,9 @@ docker system df
 原镜像与升级前备份保留到回退窗口结束，再按具体名称清理。Git 源码目录可用 `git gc` 做常规整理；私有配置、备份与运行卷分别管理。
 
 镜像发布实现参考 [GitHub 官方容器发布说明](https://docs.github.com/en/actions/tutorials/publish-packages/publish-docker-images)与 [Docker 多架构构建说明](https://docs.docker.com/build/ci/github-actions/multi-platform/)。
+
+## 公网录音配置的兼容性
+
+公网录音入口从 v1.1.1-rc.4 起支持，不包含在 rc.3 及更早镜像中。容量提醒进度单独保存在数据目录的 `voicemail-capacity.private.json`，不改变数据库 ZIP。本次不迁移数据库，继续使用 schema 19；旧配置缺少新字段时沿用局域网 HTTP，保留地址、令牌、卡槽、设备白名单和既有开关，无需为升级修改配置或板子。
+
+主动选择公网模式后，配置可能包含 `voicemail_upload_mode`、`voicemail_proxy_cidrs`、`voicemail_max_storage_mib`，旧版本采用严格字段校验，不能直接读取。回退前保留最新配置与录音目录，在新版先关闭应用录音接收并重启，按需另行停用板子；准备独立的旧版兼容私有配置，移除上述三个字段，并清空公网 `voicemail_amr_url`（旧版只接受局域网 HTTP）。不要把公网模式直接切回局域网但保留 HTTPS 地址后保存。核对配置后再按原项目、Compose 文件和数据卷切换镜像，不自动回退或删除录音。schema 19 仍不能交给已发布的 v1.0.4。

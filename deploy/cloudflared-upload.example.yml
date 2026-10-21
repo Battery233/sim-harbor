@@ -1,0 +1,17 @@
+# Optional upload route for public recording in v1.1.1-rc.4 and later.
+# Keep the existing management route and its Access validation separately.
+# This example is for a host-side connector reaching a loopback-published app.
+tunnel: REPLACE_WITH_TUNNEL_UUID
+credentials-file: /etc/cloudflared/tunnel.private.json
+ingress:
+  - hostname: upload.example.invalid
+    path: ^/api/voicemail/amr/[0-9a-f]{32,64}$
+    service: http://127.0.0.1:18880
+    originRequest:
+      access:
+        required: false
+  - service: http_status:404
+# At the edge: require HTTPS; allow no interactive Access or bot challenge here.
+# Do not rewrite the path, strip query parameters, or log complete upload URLs.
+# SIMHarbor accepts POST uploads only; other methods still require management auth.
+# Set voicemail_proxy_cidrs to the connector's actual peer IP as seen by the app.

@@ -92,8 +92,13 @@ func (s *Server) settingsRoutes(mux *http.ServeMux) {
 			settingsError(w, err)
 			return
 		}
-		if !current.Values.VoicemailEnabled && input.Values.VoicemailEnabled && !input.VoicemailConfirmed {
+		if input.Values.VoicemailEnabled && (!current.Values.VoicemailEnabled || current.Values.VoicemailMode() != input.Values.VoicemailMode()) && !input.VoicemailConfirmed {
 			reply(w, 400, map[string]string{"error": "voicemail_confirmation_required"})
+			return
+		}
+		if input.Values.VoicemailEnabled && input.Values.VoicemailMode() == "lan" && !input.Values.AllowlistEnabled() &&
+			(!current.Values.VoicemailEnabled || current.Values.VoicemailMode() != "lan") {
+			reply(w, 409, map[string]string{"error": "voicemail_allowlist_required"})
 			return
 		}
 		snap, err := s.Settings.Save(input.Values, input.Secrets, input.Revision)

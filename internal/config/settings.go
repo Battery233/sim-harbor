@@ -23,10 +23,17 @@ type SecretChanges struct {
 	ClearBark  bool   `json:"clear_bark"`
 }
 type SettingsSnapshot struct {
-	Values     Config          `json:"values"`
-	Configured map[string]bool `json:"credentials_configured"`
-	Revision   string          `json:"revision"`
-	Pending    bool            `json:"pending_restart"`
+	Values             Config             `json:"values"`
+	Configured         map[string]bool    `json:"credentials_configured"`
+	Revision           string             `json:"revision"`
+	Pending            bool               `json:"pending_restart"`
+	VoicemailReception VoicemailReception `json:"voicemail_reception"`
+}
+type VoicemailReception struct {
+	Mode             string   `json:"mode"`
+	Ready            bool     `json:"ready"`
+	AllowlistEnabled bool     `json:"allowlist_enabled"`
+	DeviceCIDRs      []string `json:"device_cidrs"`
 }
 type Settings struct {
 	mu             sync.Mutex
@@ -112,7 +119,8 @@ func (s *Settings) snapshot() (SettingsSnapshot, error) {
 	}
 	configured := map[string]bool{"aes_key": c.AESKey != "", "aes_iv": c.AESIV != "", "admin_token": c.AdminToken != "", "bark_key": c.BarkKey != ""}
 	c.Credentials = nil
-	return SettingsSnapshot{c, configured, revision(p), revision(p) != s.activeRevision}, nil
+	return SettingsSnapshot{Values: c, Configured: configured, Revision: revision(p), Pending: revision(p) != s.activeRevision,
+		VoicemailReception: VoicemailReception{Mode: s.active.VoicemailMode(), Ready: s.active.VoicemailReceptionReady(), AllowlistEnabled: s.active.AllowlistEnabled(), DeviceCIDRs: append([]string{}, s.active.DeviceCIDRs...)}}, nil
 }
 func (s *Settings) Save(values Config, secrets SecretChanges, expected string) (SettingsSnapshot, error) {
 	s.mu.Lock()

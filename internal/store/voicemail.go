@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -62,7 +63,9 @@ func (s *Store) VoicemailFile(ctx context.Context, callID int64) (VoicemailFile,
 
 // SaveVoicemail stores one AMR recording. The same bytes, slot, start and size
 // return the original media id and do not queue another notification.
-func (s *Store) SaveVoicemail(ctx context.Context, dataDir string, audio []byte, slot int, phone string, start, now int64) (mediaID string, createdAt int64, duplicate bool, err error) {
+func (s *Store) SaveVoicemail(ctx context.Context, dataDir string, audio []byte, slot int, phone string, start, now int64, capacity ...int64) (mediaID string, createdAt int64, duplicate bool, err error) {
+	s.voicemailMu.Lock()
+	defer s.voicemailMu.Unlock()
 	sum := sha256.Sum256(audio)
 	digest := hex.EncodeToString(sum[:])
 	err = s.DB.QueryRowContext(ctx, `SELECT media_id, created_at FROM voicemails WHERE sha256=? AND slot=? AND start_ts=? AND size=?`, digest, slot, start, len(audio)).Scan(&mediaID, &createdAt)
@@ -74,6 +77,11 @@ func (s *Store) SaveVoicemail(ctx context.Context, dataDir string, audio []byte,
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return "", 0, false, err
+	}
+	if len(capacity) > 0 && capacity[0] > 0 {
+		if err = s.checkVoicemailCapacity(ctx, dataDir, int64(len(audio)), capacity[0]); err != nil {
+			return "", 0, false, err
+		}
 	}
 	buf := make([]byte, 16)
 	if _, err = rand.Read(buf); err != nil {
@@ -137,6 +145,75 @@ func (s *Store) SaveVoicemail(ctx context.Context, dataDir string, audio []byte,
 		return "", 0, false, err
 	}
 	return mediaID, now, false, nil
+}
+
+var ErrVoicemailCapacity = errors.New("voicemail capacity reached")
+
+// Count real files, including unindexed files left after an interrupted write.
+// Never delete old recordings. Bound directory work and index growth as well.
+func (s *Store) checkVoicemailCapacity(ctx context.Context, dataDir string, incoming, maximum int64) error {
+	var count int
+	if err := s.DB.QueryRowContext(ctx, `SELECT count(*) FROM voicemails`).Scan(&count); err != nil {
+		return err
+	}
+	if count >= 10000 || incoming > maximum {
+		return ErrVoicemailCapacity
+	}
+
+	used, entries, err := scanVoicemailUsage(ctx, dataDir)
+	if err != nil {
+		return err
+	}
+	if entries >= 10000 || used > maximum-incoming {
+		return ErrVoicemailCapacity
+	}
+	return nil
+}
+
+// VoicemailUsage counts file lengths, including unindexed and partial files.
+// It reads no audio contents and serializes with application recording writes.
+func (s *Store) VoicemailUsage(ctx context.Context, dataDir string) (int64, error) {
+	s.voicemailMu.Lock()
+	defer s.voicemailMu.Unlock()
+	used, _, err := scanVoicemailUsage(ctx, dataDir)
+	return used, err
+}
+
+func scanVoicemailUsage(ctx context.Context, dataDir string) (used int64, entries int, err error) {
+	dir, err := os.Open(filepath.Join(dataDir, "voicemail"))
+	if errors.Is(err, os.ErrNotExist) {
+		return 0, 0, nil
+	}
+	if err != nil {
+		return 0, 0, err
+	}
+	defer dir.Close()
+	for {
+		if err := ctx.Err(); err != nil {
+			return 0, 0, err
+		}
+		batch, err := dir.ReadDir(128)
+		if err != nil && err != io.EOF {
+			return 0, 0, err
+		}
+		for _, entry := range batch {
+			entries++
+			if entries > 10000 {
+				return 0, 0, ErrVoicemailCapacity
+			}
+			info, e := entry.Info()
+			if e != nil {
+				return 0, 0, e
+			}
+			if !info.Mode().IsRegular() || info.Size() < 0 || info.Size() > int64(^uint64(0)>>1)-used {
+				return 0, 0, errors.New("invalid voicemail directory entry")
+			}
+			used += info.Size()
+		}
+		if err == io.EOF {
+			return used, entries, nil
+		}
+	}
 }
 
 func (s *Store) linkStoredVoicemail(ctx context.Context, mediaID, phone string, now int64) error {

@@ -73,6 +73,7 @@ type Server struct {
 	greetingSent     map[string]time.Time
 	wg               sync.WaitGroup
 	client           *http.Client
+	voicemailIngress voicemailIngress
 }
 
 func New(c config.Config, s *store.Store, logs ...*diagnostics.Recorder) *Server {
@@ -638,11 +639,21 @@ func (s *Server) RunNotifications(ctx context.Context) {
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
 	lastObserve := time.Time{}
+	lastCapacityObserve := time.Time{}
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-tick.C:
+			if time.Since(lastCapacityObserve) >= 30*time.Second {
+				s.notificationGate.Lock()
+				err := s.observeVoicemailCapacity(ctx, time.Now())
+				s.notificationGate.Unlock()
+				lastCapacityObserve = time.Now()
+				if err != nil {
+					s.Logs.Record("voicemail_capacity_observation_failed", diagnostics.Fields{})
+				}
+			}
 			if s.Config.AlertsEnabled() && time.Since(lastObserve) >= 15*time.Second {
 				s.notificationGate.Lock()
 				err := s.observeStatusAlerts(ctx, time.Now())

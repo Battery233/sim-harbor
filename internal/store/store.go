@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Battery233/sim-harbor/internal/protocol"
@@ -19,7 +20,10 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-type Store struct{ DB *sql.DB }
+type Store struct {
+	DB          *sql.DB
+	voicemailMu sync.Mutex
+}
 type Message struct {
 	Multipart     bool   `json:"multipart"`
 	PartsTotal    int    `json:"parts_total"`
@@ -79,7 +83,7 @@ func Open(path string) (*Store, error) {
 		return nil, e
 	}
 	db.SetMaxOpenConns(1)
-	s := &Store{db}
+	s := &Store{DB: db}
 	if e = s.migrate(); e != nil {
 		db.Close()
 		return nil, e
