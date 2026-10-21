@@ -1,9 +1,4 @@
-export function voicemailServiceStatus({
-  savedEnabled,
-  runningEnabled,
-  pendingRestart,
-  environment,
-}) {
+export function voicemailServiceStatus({ savedEnabled, runningEnabled, pendingRestart }) {
   const saved = savedEnabled ? '已保存：开启。' : '已保存：关闭。'
   const running =
     runningEnabled === true
@@ -12,14 +7,12 @@ export function voicemailServiceStatus({
         ? '当前生效：关闭。'
         : '当前生效状态尚未读取。'
   const restart = pendingRestart ? '有配置等待重启应用后生效。' : ''
-  const board = '板子是否接听，请到“板子设置”读取确认。'
-  const cloud = environment === 'cloud' ? '云端暂不支持接收录音，请保持关闭。' : ''
-  return saved + running + restart + board + cloud
+  return saved + running + restart
 }
 
 export function settingsSavedNote(turningOffVoicemail) {
   if (turningOffVoicemail)
-    return '已保存。重启应用后，将停止播放提示语和接收新录音。板子仍可能自动接听；请到“板子设置”读取并执行停止操作，确认结果。'
+    return '已保存。重启应用后，将停止播放提示语和接收新录音。板子仍可能自动接听；请在下方“板子接听与上传”读取并执行停用，确认结果。'
   return '已保存，重启应用后生效。板子设置不会随之改变。'
 }
 

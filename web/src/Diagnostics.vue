@@ -1,5 +1,7 @@
 <script setup>
 import InfoTip from './InfoTip.vue'
+import BoardHeartbeat from './BoardHeartbeat.vue'
+import BoardStatus from './BoardStatus.vue'
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import {
   createDiagnosticFlow,
@@ -7,7 +9,7 @@ import {
   diagnosticOutcomes,
 } from './diagnostic-flow.js'
 import { diagnosticRows } from './diagnostic-presentation.js'
-const props = defineProps({ request: Function })
+const props = defineProps({ request: Function, state: Object })
 const view = ref({ items: [], data: null, next: 0, loading: false, error: '' })
 const level = ref(''),
   category = ref(''),
@@ -131,6 +133,7 @@ onUnmounted(() => flow.dispose())
         </div>
       </form>
     </section>
+    <BoardHeartbeat :request="request" :state="state" />
     <section class="panel compose">
       <h2>
         最近事件
@@ -221,5 +224,6 @@ onUnmounted(() => flow.dispose())
       </ul>
       <button v-if="view.next" :disabled="view.loading" @click="load(true)">查看更早记录</button>
     </section>
+    <BoardStatus :state="state" />
   </div>
 </template>

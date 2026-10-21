@@ -1,6 +1,7 @@
 <script setup>
 import InfoTip from './InfoTip.vue'
 import MigrationRecovery from './MigrationRecovery.vue'
+import BoardStorage from './BoardStorage.vue'
 import { ref, computed, onUnmounted } from 'vue'
 import { messageExportQuery, createDownloadFlow, saveFile } from './download.js'
 import { cardFilterOptions } from './inbox-cards.js'
@@ -108,6 +109,7 @@ async function backup() {
         </div>
       </form>
     </section>
+    <BoardStorage :request="request" :state="state" />
     <section class="panel compose">
       <h2>
         数据库备份

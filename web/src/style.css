@@ -1172,6 +1172,38 @@ button.danger {
 .voicemail-preview {
   white-space: pre-line;
 }
+.recording-fields {
+  display: grid;
+  gap: 14px;
+}
+.recording-fields p {
+  margin: 0;
+}
+.recording-addresses {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 16px 0 8px;
+}
+.recording-addresses div {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #d9dfd7;
+  border-radius: 12px;
+}
+.recording-addresses dt {
+  font-size: 13px;
+  color: #7c8579;
+}
+.recording-addresses dd {
+  margin: 8px 0 0;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 640px) {
+  .recording-addresses {
+    grid-template-columns: 1fr;
+  }
+}
 .settings-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

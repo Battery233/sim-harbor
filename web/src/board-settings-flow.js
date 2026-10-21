@@ -141,7 +141,7 @@ export function voicemailSlotEvidence(slot, channel) {
 }
 
 export const voicemailSetupSteps = [
-  '首次开启：先到“系统配置”填写留言选项，保存并重启应用。',
+  '首次开启：先在“录音配置”填写应用接收设置，保存并重启应用。',
   '读取板子设置，再选择开启或停止自动接听。读取不会发短信。',
   '核对修改内容和费用后确认执行。结果未确认时，先重新读取，不要重复操作。',
 ]
@@ -156,7 +156,7 @@ export function voicemailPlan(intent, observed, running) {
   const held = []
   if (!running) held.push('尚未读到应用设置，请重新读取。本次不会执行修改。')
   if (intent === 'enable' && running && running.enabled !== true)
-    held.push('应用留言服务尚未开启。请先到“系统配置”开启、保存并重启。本次不会执行修改。')
+    held.push('应用留言服务尚未开启。请先完成上方应用接收设置，保存并重启。本次不会执行修改。')
   // Match voicemailTarget: TCP restore can recover the observed board even
   // after the application has been disabled and its configured slots cleared.
   const inferRestoreSlots = intent === 'restore' && channel === 'tcp' && configured.length === 0
@@ -222,7 +222,7 @@ export function voicemailPlan(intent, observed, running) {
     }
   }
   if (intent === 'enable' && willWrite)
-    lines.push('提示语：保留板子原有提示语，应用会在接通后播放一次系统配置中的提示语。')
+    lines.push('提示语：保留板子原有提示语，应用会在接通后播放一次上方配置的提示语。')
   if (intent === 'restore') {
     clearsURL = willWrite && (observed?.amr_url || '') !== ''
     lines.push(

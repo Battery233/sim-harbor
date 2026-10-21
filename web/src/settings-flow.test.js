@@ -111,7 +111,6 @@ test('关闭应用留言不会被写成板子已经停止自动接听', () => {
   assert.match(off, /已保存：关闭/)
   assert.match(off, /当前生效：开启/)
   assert.match(off, /等待重启应用后生效/)
-  assert.match(off, /板子是否接听，请到“板子设置”读取确认/)
   assert.doesNotMatch(off, /板子参数已确认|已经恢复不接听/)
   const cloud = voicemailServiceStatus({
     savedEnabled: false,
@@ -120,7 +119,7 @@ test('关闭应用留言不会被写成板子已经停止自动接听', () => {
     environment: 'cloud',
   })
   assert.match(cloud, /当前生效：关闭/)
-  assert.match(cloud, /云端暂不支持接收录音/)
+  assert.match(cloud, /已保存：关闭/)
   assert.match(settingsSavedNote(true), /板子仍可能自动接听/)
   assert.match(settingsSavedNote(false), /板子设置不会随之改变/)
 })

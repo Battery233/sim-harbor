@@ -1,8 +1,16 @@
 <script setup>
 import InfoTip from './InfoTip.vue'
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { settingsSectionValues, normalizedSettingsValues } from './recording-settings.js'
 import { createSettingsFlow, settingsSavedNote, voicemailServiceStatus } from './settings-flow.js'
-const props = defineProps({ request: Function, state: Object })
+const props = defineProps({
+  request: Function,
+  state: Object,
+  locked: Boolean,
+  section: { type: String, default: 'system' },
+})
+const emit = defineEmits(['configuration-status', 'changed'])
+const recording = computed(() => props.section === 'recording')
 const snapshot = ref(null),
   values = ref({}),
   secrets = ref({}),
@@ -80,12 +88,13 @@ const voicemailStatus = computed(() =>
     savedEnabled: snapshot.value?.values?.voicemail_enabled === true,
     runningEnabled: props.state ? props.state.voicemail_enabled === true : null,
     pendingRestart: snapshot.value?.pending_restart === true,
-    environment: props.state?.environment,
   }),
 )
 const enablingVoicemail = computed(
   () =>
-    values.value.voicemail_enabled === true && snapshot.value?.values?.voicemail_enabled !== true,
+    recording.value &&
+    values.value.voicemail_enabled === true &&
+    snapshot.value?.values?.voicemail_enabled !== true,
 )
 const canSave = computed(
   () =>
@@ -93,8 +102,43 @@ const canSave = computed(
     !busy.value &&
     !uncertain.value &&
     !restarting.value &&
+    !props.locked &&
     consent.value &&
     (!enablingVoicemail.value || voicemailConsent.value),
+)
+const editedValues = computed(() =>
+  settingsSectionValues(
+    snapshot.value?.values || {},
+    {
+      ...values.value,
+      device_cidrs: sources.value
+        .split('\n')
+        .map((value) => value.trim())
+        .filter(Boolean),
+    },
+    props.section,
+  ),
+)
+const dirty = computed(
+  () =>
+    snapshot.value &&
+    JSON.stringify(normalizedSettingsValues(editedValues.value)) !==
+      JSON.stringify(normalizedSettingsValues(snapshot.value.values)),
+)
+watch(
+  () => ({
+    revision: snapshot.value?.revision,
+    ready:
+      !!snapshot.value &&
+      !dirty.value &&
+      !snapshot.value.pending_restart &&
+      !busy.value &&
+      !uncertain.value &&
+      !restarting.value,
+    url: snapshot.value?.values?.voicemail_amr_url || '',
+  }),
+  (status) => emit('configuration-status', status),
+  { immediate: true },
 )
 function toggleVoicemailSlot(slot) {
   const slots = new Set(values.value.voicemail_slots || [])
@@ -112,12 +156,7 @@ function fillVoicemailURL() {
 }
 function adopt(data) {
   snapshot.value = data
-  values.value = {
-    ...data.values,
-    admin_token_header: data.values.admin_token_header || '',
-    device_allowlist_enabled: data.values.device_allowlist_enabled !== false,
-    status_alerts_enabled: data.values.status_alerts_enabled !== false,
-  }
+  values.value = normalizedSettingsValues(data.values)
   sources.value = (data.values.device_cidrs || []).join('\n')
   secrets.value = {}
   consent.value = false
@@ -127,7 +166,7 @@ function adopt(data) {
   if (!data.pending_restart) restarting.value = false
 }
 async function load() {
-  if (busy.value || stopped) return
+  if (busy.value || stopped || props.locked) return
   busy.value = true
   error.value = ''
   secrets.value = {}
@@ -145,15 +184,9 @@ async function save() {
   busy.value = true
   error.value = ''
   note.value = ''
-  const replacement = { ...secrets.value }
+  const replacement = recording.value ? {} : { ...secrets.value }
   secrets.value = {}
-  const body = {
-    ...values.value,
-    device_cidrs: sources.value
-      .split('\n')
-      .map((v) => v.trim())
-      .filter(Boolean),
-  }
+  const body = editedValues.value
   try {
     const data = await flow.save(
       body,
@@ -168,7 +201,8 @@ async function save() {
           props.state?.voicemail_enabled === true) &&
         values.value.voicemail_enabled !== true
       adopt(data)
-      note.value = settingsSavedNote(turningOff)
+      note.value = settingsSavedNote(recording.value && turningOff)
+      emit('changed')
     }
   } catch (e) {
     if (!stopped) {
@@ -181,7 +215,15 @@ async function save() {
   }
 }
 async function restart() {
-  if (!snapshot.value || !restartConsent.value || busy.value || restarting.value || uncertain.value)
+  if (
+    !snapshot.value ||
+    !restartConsent.value ||
+    busy.value ||
+    restarting.value ||
+    uncertain.value ||
+    dirty.value ||
+    props.locked
+  )
     return
   busy.value = true
   error.value = ''
@@ -207,6 +249,7 @@ function pollResume(attempt) {
       if (data && !data.pending_restart) {
         adopt(data)
         note.value = '应用已恢复，当前保存的配置已生效。'
+        emit('changed')
         return
       }
     } catch {
@@ -229,24 +272,37 @@ onUnmounted(() => {
   <section class="panel compose system-settings">
     <div class="detail-head">
       <div>
-        <p class="eyebrow">SETTINGS</p>
+        <p class="eyebrow">{{ recording ? 'RECORDING' : 'SETTINGS' }}</p>
         <h2>
-          系统配置
-          <InfoTip label="系统配置说明"
-            >这里修改应用的设置，保存并重启应用后生效，短信与来电历史保留。板子是否自动接听、录音，需要到“板子设置”另行修改。</InfoTip
-          >
+          {{ recording ? '录音配置' : '系统配置' }}
+          <InfoTip :label="recording ? '录音配置说明' : '系统配置说明'">
+            {{
+              recording
+                ? '第一步设置应用如何接收录音，第二步设置板子是否接听和向哪里上传。分别确认，不会自动联动。'
+                : '这里修改应用的通用设置，保存并重启应用后生效。接通提示语、录音接收及板子接听上传请到“录音配置”管理。'
+            }}
+          </InfoTip>
         </h2>
       </div>
-      <span class="badge">{{
+      <span v-if="snapshot" class="badge">{{
         snapshot?.pending_restart ? '配置已保存，重启应用后生效' : '当前配置已生效'
       }}</span>
     </div>
+    <p v-if="recording" class="muted">
+      <span v-if="state?.environment !== 'cloud'">录音接收目前仅支持本地部署。</span>
+      先设置应用，再设置板子。上传地址只填一次；两步分别确认，保存应用设置不会修改板子或发送短信。
+    </p>
+    <p v-if="recording && state?.environment === 'cloud'" class="notice">
+      当前云端暂不支持接收录音，请保持接收服务关闭。下方仍可读取板子上传地址并执行停用；已有配置会原样保留。
+    </p>
     <p v-if="error" class="notice error" role="alert">{{ error }}</p>
     <p v-if="note" class="notice" role="status">{{ note }}</p>
-    <button type="button" :disabled="busy || restarting" @click="load">重新读取配置</button>
+    <button type="button" :disabled="busy || restarting || locked" @click="load">
+      重新读取配置
+    </button>
     <form v-if="snapshot" @submit.prevent="save">
-      <fieldset :disabled="busy || restarting">
-        <div v-for="group in groups" :key="group.title" class="settings-group">
+      <fieldset :disabled="busy || restarting || locked">
+        <div v-for="group in recording ? [] : groups" :key="group.title" class="settings-group">
           <h3>{{ group.title }}</h3>
           <div class="settings-grid">
             <label v-for="field in group.fields" :key="field[0]"
@@ -275,7 +331,7 @@ onUnmounted(() => {
             管理凭据不变；保存并重启应用后生效，随后刷新页面。反向代理需透传该请求头。
           </p>
         </div>
-        <details class="settings-group settings-advanced">
+        <details v-if="!recording" class="settings-group settings-advanced">
           <summary>
             高级连接设置
             <InfoTip label="高级连接设置说明">
@@ -333,7 +389,7 @@ onUnmounted(() => {
             />
           </label>
         </details>
-        <div class="settings-group">
+        <div v-if="!recording" class="settings-group">
           <h3>
             凭据
             <InfoTip label="凭据说明">
@@ -357,30 +413,29 @@ onUnmounted(() => {
             ><input v-model="secrets.clear_bark" type="checkbox" />清除Bark Key并关闭后续推送</label
           >
         </div>
-        <div class="settings-group">
-          <h3>业务选项</h3>
+        <div v-if="recording" class="settings-group">
           <h3>
-            应用留言服务（默认关闭）
+            1. 应用接收与提示语
             <InfoTip label="留言说明">
-              开启后，应用会在电话接通时让板子播放一次提示语，并接收、保存录音。保存并重启应用后生效；板子的自动接听需要到“板子设置”另行开启。自动接听可能产生通话费用。
+              这里确定应用接收录音的地址、目标卡槽和接通提示文字。保存并重启只更新应用，不自动修改板子。下方第二步会使用同一个已生效地址。
             </InfoTip>
           </h3>
-          <p class="tiny muted">接通后播放提示语，并接收、保存录音。仅支持本地部署。</p>
           <p class="notice">{{ voicemailStatus }}</p>
-          <p class="notice">
-            关闭并重启应用后，不再播放提示语或接收新录音；板子仍可能接听、录音和尝试上传。要彻底停用，请到“板子设置”停止自动接听，并清除提示语和上传地址。
+          <p v-if="!values.voicemail_enabled" class="notice">
+            关闭应用并重启后，不再播放提示语或接收新录音，已有录音保留。板子仍可能接听和上传；彻底停用还需执行下方第二步。
           </p>
           <label class="consent"
             ><input
               v-model="values.voicemail_enabled"
               type="checkbox"
+              :disabled="state?.environment === 'cloud' && !values.voicemail_enabled"
               @change="voicemailConsent = false"
-            />开启应用留言服务（保存并重启后生效）</label
+            />开启录音接收与接通提示语（保存并重启后生效）</label
           >
-          <p v-if="!values.voicemail_enabled" class="tiny muted">
-            需要留言时，勾选后填写下方选项。已有录音不会因关闭服务而删除。
-          </p>
-          <div v-if="values.voicemail_enabled">
+          <div class="recording-fields">
+            <p class="tiny muted">
+              目标卡槽：开启或停用板子设置时使用这些卡槽；留空不会默认修改两张卡。
+            </p>
             <div class="settings-grid">
               <label class="consent"
                 ><input
@@ -405,18 +460,24 @@ onUnmounted(() => {
                 placeholder="请在提示音后留言"
               />
             </label>
+            <p class="tiny muted">接通后只播放一遍，播完不挂断；不会改写板子预设提示语。</p>
             <label
-              >接收录音的局域网地址（HTTP）<input
+              >上传地址（局域网 HTTP）<input
                 v-model="values.voicemail_amr_url"
                 type="text"
                 maxlength="500"
                 placeholder="http://192.168.31.10:18880/api/voicemail/amr/…"
               />
             </label>
-            <button type="button" @click="fillVoicemailURL">生成上传地址模板</button>
+            <button v-if="!values.voicemail_amr_url" type="button" @click="fillVoicemailURL">
+              生成上传地址模板
+            </button>
+            <p v-else class="tiny muted">
+              现有地址和令牌会保留。修改后请保存并重启应用，再在第二步同步到板子。
+            </p>
             <p class="tiny muted">
-              提示语接通后只播放一遍，播完不挂断。把地址模板中的 x
-              换成运行本应用的主机局域网地址，并核对端口。保存并重启后，再到“板子设置”开启自动接听和录音。
+              地址使用运行本应用的主机局域网 IP 和端口。使用模板时，请替换其中的 x。
+              下方会读取板子实际使用的地址，供你核对。
             </p>
           </div>
           <label v-if="enablingVoicemail" class="consent"
@@ -425,6 +486,9 @@ onUnmounted(() => {
               type="checkbox"
             />我了解：完成板子设置后，所选卡槽会自动接听并录音，可能产生通话费用，不再只做未接提醒。</label
           >
+        </div>
+        <div v-if="!recording" class="settings-group">
+          <h3>业务选项</h3>
           <label class="consent"
             ><input v-model="values.status_alerts_enabled" type="checkbox" />持续异常与恢复提醒
             <InfoTip label="持续异常提醒规则"
@@ -452,7 +516,7 @@ onUnmounted(() => {
             </select></label
           >
         </div>
-        <div class="settings-group settings-paths">
+        <div v-if="!recording" class="settings-group settings-paths">
           <h3>
             部署信息（只读）
             <InfoTip label="部署信息说明">
@@ -464,16 +528,25 @@ onUnmounted(() => {
           <p>网页程序目录：{{ values.static_directory }}</p>
         </div>
         <label class="consent"
-          ><input
-            v-model="consent"
-            type="checkbox"
-          />我已核对参数、凭据和费用限制，了解保存后还需重启应用。</label
+          ><input v-model="consent" type="checkbox" />{{
+            recording
+              ? '我已核对卡槽、提示语和上传地址；保存后还需重启应用，板子不会自动改变。'
+              : '我已核对参数、凭据和费用限制，了解保存后还需重启应用。'
+          }}</label
         >
-        <button class="primary" :disabled="!canSave">{{ busy ? '处理中…' : '保存配置' }}</button>
+        <button class="primary" :disabled="!canSave">
+          {{ busy ? '处理中…' : recording ? '保存应用录音设置' : '保存配置' }}
+        </button>
       </fieldset>
     </form>
     <div v-if="snapshot?.pending_restart" class="settings-group">
       <h3>使保存的配置生效</h3>
+      <p v-if="recording" class="tiny muted">
+        重启会使所有已保存的应用配置生效，包括“系统配置”页的变更；不会重启板子。
+      </p>
+      <p v-if="dirty" class="notice">
+        还有未保存的编辑。重启只使用已保存配置，请先保存或重新读取配置。
+      </p>
       <p class="tiny muted">
         正常重启管理应用，板子连接会短暂中断后自动重连。不会重启板子或自动发送短信。
       </p>
@@ -481,9 +554,12 @@ onUnmounted(() => {
         ><input
           v-model="restartConsent"
           type="checkbox"
-          :disabled="busy || restarting"
+          :disabled="busy || restarting || dirty || locked"
         />确认按已保存的配置重启应用</label
-      ><button :disabled="!restartConsent || busy || restarting || uncertain" @click="restart">
+      ><button
+        :disabled="!restartConsent || busy || restarting || uncertain || dirty || locked"
+        @click="restart"
+      >
         确认重启应用
       </button>
     </div>

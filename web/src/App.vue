@@ -7,7 +7,7 @@ import { createInboxDeletion } from './inbox-delete.js'
 import CardRecords from './CardRecords.vue'
 import InfoTip from './InfoTip.vue'
 import CardPushControls from './CardPushControls.vue'
-import BoardSettings from './BoardSettings.vue'
+import RecordingSettings from './RecordingSettings.vue'
 import SystemSettings from './SystemSettings.vue'
 import { settingsErrors } from './settings-flow.js'
 import Outbox from './Outbox.vue'
@@ -53,9 +53,9 @@ let credential = access.read(),
 const errors = {
   ...settingsErrors,
   invalid_board_action: '不支持此操作，或心跳值超过安全范围；请先核对参数。',
-  voicemail_disabled: '应用留言服务尚未开启。请先在“系统配置”开启、保存并重启应用。',
+  voicemail_disabled: '应用接收服务尚未开启。请在“录音配置”保存设置并重启应用。',
   voicemail_sms_required:
-    '这块板子需要用短信修改接听方式。请分别填写所选卡槽的本机号码和板子管理密码，再确认费用。',
+    '这块板子需要用短信修改接听方式。请填写对应卡槽自己的号码和板子短信指令用户密码，再确认费用。',
   sms_cost_required: '请先勾选设置短信的费用确认。',
   stop_auto_answer_required: '请勾选“我确认停止板子自动接听”，再确认执行。',
   control_already_dispatched: '这条设置短信可能已经发出。请先读取设置，不要重复发送。',
@@ -535,11 +535,11 @@ onUnmounted(() => {
           </button>
           <button :class="{ primary: tab === 'data' }" @click="tab = 'data'">数据维护</button>
           <button :class="{ primary: tab === 'cards' }" @click="tab = 'cards'">卡记录</button>
+          <button :class="{ primary: tab === 'recording' }" @click="tab = 'recording'">
+            录音配置
+          </button>
           <button :class="{ primary: tab === 'settings' }" @click="tab = 'settings'">
             系统配置
-          </button>
-          <button :class="{ primary: tab === 'board-settings' }" @click="tab = 'board-settings'">
-            板子设置
           </button>
         </nav>
         <CardRecords
@@ -575,9 +575,14 @@ onUnmounted(() => {
           @dismiss-linked="linkedCall = 0"
         />
         <Notifications v-if="tab === 'notifications'" :request="api" />
-        <Diagnostics v-if="tab === 'diagnostics'" :request="api" />
+        <Diagnostics v-if="tab === 'diagnostics'" :request="api" :state="state" />
         <SystemSettings v-if="tab === 'settings'" :request="api" :state="state" />
-        <BoardSettings v-if="tab === 'board-settings'" :request="api" :state="state" />
+        <RecordingSettings
+          v-if="tab === 'recording'"
+          :request="api"
+          :state="state"
+          @changed="refresh(false)"
+        />
         <section v-show="tab === 'inbox'" class="inbox panel">
           <div class="inbox-heading">
             <div>
