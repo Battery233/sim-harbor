@@ -5,8 +5,6 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"os"
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"time"
@@ -113,23 +111,22 @@ func (s *Server) downloadVoicemail(w http.ResponseWriter, r *http.Request) {
 		reply(w, 503, map[string]string{"error": "database_unavailable"})
 		return
 	}
-	if !voicemailFileName.MatchString(file.Name) || file.Size <= 0 || file.Size > 2<<20 {
+	s.serveVoicemailFile(w, r, file, "voicemail-"+strconv.FormatInt(id, 10)+".amr")
+}
+
+func (s *Server) serveVoicemailFile(w http.ResponseWriter, r *http.Request, file store.VoicemailFile, downloadName string) {
+	if !voicemailFileName.MatchString(file.Name) || file.Size <= 0 || file.Size > maxVoicemailBytes {
 		reply(w, 404, map[string]string{"error": "not_found"})
 		return
 	}
-	f, err := os.Open(filepath.Join(s.Config.DataDir, "voicemail", file.Name))
+	f, err := s.openVoicemailFile(file)
 	if err != nil {
 		reply(w, 404, map[string]string{"error": "voicemail_audio_missing"})
 		return
 	}
 	defer f.Close()
-	info, err := f.Stat()
-	if err != nil || info.Size() != file.Size {
-		reply(w, 404, map[string]string{"error": "voicemail_audio_missing"})
-		return
-	}
 	w.Header().Set("Content-Type", "audio/amr")
-	w.Header().Set("Content-Disposition", "attachment; filename=\"voicemail-"+strconv.FormatInt(id, 10)+".amr\"")
+	w.Header().Set("Content-Disposition", "attachment; filename=\""+downloadName+"\"")
 	w.Header().Set("Content-Length", strconv.FormatInt(file.Size, 10))
 	w.WriteHeader(http.StatusOK)
 	io.Copy(w, f)

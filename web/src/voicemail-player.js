@@ -1,6 +1,12 @@
 // Plays one voicemail at a time. The AMR bytes come from the authenticated
 // download; decoding and Web Audio are injected so tests do not need a browser.
-export function createVoicemailPlayer({ request, decode, createContext, onChange }) {
+export function createVoicemailPlayer({
+  request,
+  decode,
+  createContext,
+  onChange,
+  resourceFor = (call) => (call?.voicemail_id ? '/calls/' + call.id + '/voicemail' : null),
+}) {
   let generation = 0,
     current = null,
     disposed = false
@@ -44,7 +50,9 @@ export function createVoicemailPlayer({ request, decode, createContext, onChange
     return { samples, rate }
   }
   async function toggle(call) {
-    if (disposed || !call?.id || !call.voicemail_id) return
+    if (disposed || !call?.id) return
+    const path = resourceFor(call)
+    if (!path) return
     if (current?.id === call.id) {
       stop()
       return
@@ -56,7 +64,7 @@ export function createVoicemailPlayer({ request, decode, createContext, onChange
     current = { id: call.id, phase: 'loading' }
     publish(call.id, 'loading')
     try {
-      const blob = await request('/calls/' + call.id + '/voicemail', 'GET', undefined, {
+      const blob = await request(path, 'GET', undefined, {
         types: ['audio/amr'],
         max: 2 * 1024 * 1024,
       })

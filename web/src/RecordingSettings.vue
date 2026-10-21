@@ -2,7 +2,8 @@
 import { ref } from 'vue'
 import SystemSettings from './SystemSettings.vue'
 import BoardVoicemail from './BoardVoicemail.vue'
-defineProps({ request: Function, state: Object })
+import UnlinkedVoicemails from './UnlinkedVoicemails.vue'
+defineProps({ request: Function, fileRequest: Function, state: Object })
 const emit = defineEmits(['changed'])
 const appSettings = ref(null)
 const boardBusy = ref(false)
@@ -23,5 +24,6 @@ const boardBusy = ref(false)
       :app-settings="appSettings"
       @busy="boardBusy = $event"
     />
+    <UnlinkedVoicemails :request="request" :file-request="fileRequest" />
   </div>
 </template>

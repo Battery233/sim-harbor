@@ -11,6 +11,24 @@ const response = (body, extra = {}) =>
       ...extra,
     },
   })
+test('未关联录音已关联或文件缺失时给出可操作提示，不自动重发', async () => {
+  let count = 0
+  for (const error of ['voicemail_unavailable', 'voicemail_audio_missing']) {
+    const request = createFileRequest({
+      getCredential: () => 'SYNTHETIC',
+      onUnauthorized: () => {},
+      fetcher: async () => {
+        count++
+        return new Response(JSON.stringify({ error }), { status: 404 })
+      },
+    })
+    await assert.rejects(
+      request('/voicemails/unlinked/1/audio'),
+      error === 'voicemail_unavailable' ? /刷新未关联录音/ : /文件缺失或无法读取/,
+    )
+  }
+  assert.equal(count, 2)
+})
 test('file request uses management credential once and rejects incomplete or unauthorized downloads', async () => {
   let calls = 0,
     locked = 0

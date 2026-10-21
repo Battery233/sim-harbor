@@ -1172,6 +1172,19 @@ button.danger {
 .voicemail-preview {
   white-space: pre-line;
 }
+.unlinked-recording-list {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0;
+}
+.unlinked-recording-list .call-row {
+  border: 1px solid #d9dfd7;
+  border-radius: 12px;
+  margin-bottom: 16px;
+}
+.recording-file-name {
+  overflow-wrap: anywhere;
+}
 .recording-fields {
   display: grid;
   gap: 14px;

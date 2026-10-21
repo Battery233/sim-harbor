@@ -418,6 +418,7 @@ func (s *Server) Handler() http.Handler {
 	s.boardSettingsRoutes(mux)
 	s.boardHistoryRoutes(mux)
 	s.callRoutes(mux)
+	s.unlinkedVoicemailRoutes(mux)
 	s.diagnosticRoutes(mux)
 	s.settingsRoutes(mux)
 	mux.HandleFunc("POST /api/messages/{id}/delete", s.deleteMessage)

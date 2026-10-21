@@ -580,6 +580,7 @@ onUnmounted(() => {
         <RecordingSettings
           v-if="tab === 'recording'"
           :request="api"
+          :file-request="fileRequest"
           :state="state"
           @changed="refresh(false)"
         />

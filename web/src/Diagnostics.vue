@@ -60,6 +60,8 @@ onUnmounted(() => flow.dispose())
   <div class="outbox">
     <p v-if="view.error" class="notice error" role="alert">{{ view.error }}</p>
     <p v-if="notice" class="notice" role="status">{{ notice }}</p>
+    <BoardHeartbeat :request="request" :state="state" />
+    <BoardStatus :state="state" />
     <section class="panel compose">
       <div class="detail-head">
         <div>
@@ -133,7 +135,6 @@ onUnmounted(() => flow.dispose())
         </div>
       </form>
     </section>
-    <BoardHeartbeat :request="request" :state="state" />
     <section class="panel compose">
       <h2>
         最近事件
@@ -224,6 +225,5 @@ onUnmounted(() => flow.dispose())
       </ul>
       <button v-if="view.next" :disabled="view.loading" @click="load(true)">查看更早记录</button>
     </section>
-    <BoardStatus :state="state" />
   </div>
 </template>

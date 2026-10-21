@@ -13,13 +13,14 @@ function silenceAMR(frames) {
   return bytes
 }
 
-function harness(decode = tone) {
+function harness(decode = tone, resourceFor) {
   const events = [],
     requests = [],
     waiters = [],
     contexts = [],
     decoded = []
   const player = createVoicemailPlayer({
+    resourceFor,
     request: (path, method, body, options) => {
       requests.push({ path, method, body, options })
       return new Promise((resolve, reject) => waiters.push({ resolve, reject }))
@@ -73,6 +74,20 @@ function harness(decode = tone) {
   })
   return { player, events, requests, waiters, contexts, decoded }
 }
+
+test('未关联录音使用独立的鉴权下载地址，离开后停止播放且不触发来电接口', async () => {
+  const { unlinkedAudioPath } = await import('./unlinked-voicemail.js')
+  const h = harness(tone, unlinkedAudioPath)
+  const done = h.player.toggle({ id: 9, file_state: 'available' })
+  assert.equal(h.requests[0].path, '/voicemails/unlinked/9/audio')
+  h.waiters[0].resolve(new Blob([Uint8Array.of(1)]))
+  await done
+  assert.equal(h.contexts[0].sources[0].started, true)
+  h.player.dispose()
+  assert.equal(h.contexts[0].sources[0].stopped, true)
+  await h.player.toggle({ id: 10, file_state: 'available' })
+  assert.equal(h.requests.length, 1)
+})
 
 test('playback resumes audio, then fetches and decodes the authenticated AMR', async () => {
   const h = harness()
