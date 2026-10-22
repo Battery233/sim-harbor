@@ -91,11 +91,3 @@ var outcomes = map[string]bool{
 	"stored": true, "store_failed": true, "total_mismatch": true,
 	"invalid_fragment": true, "conflicting_fragment": true,
 }
-
-func Catalog() map[string]Definition {
-	copy := make(map[string]Definition, len(catalog))
-	for key, value := range catalog {
-		copy[key] = value
-	}
-	return copy
-}

@@ -1,13 +1,21 @@
 # 架构
 
-SIMHarbor 是单实例 Go 服务，提供设备 TCP、管理 HTTP API、Vue 静态网页与后台任务。SQLite 保存业务记录和任务状态，不需要外部数据库或消息队列。
+SIMHarbor 是单实例 Go 服务，提供设备 TCP、录音 HTTP 接收、管理 HTTP API、Vue 静态网页与后台任务。SQLite 保存业务记录、录音索引和任务状态，AMR 文件保存在私有数据目录；不需要外部数据库或消息队列。
 
 ```mermaid
 flowchart TB
     Board[双卡智能板] -->|TCP 上报 / 命令响应| TCP[协议会话]
     TCP --> Store[(SQLite / WAL)]
+    Board -->|可选 HTTP / HTTPS 上传| Upload[录音入口 / 令牌与来源校验]
+    Upload --> Store
+    Upload --> Audio[私有 voicemail 目录]
     Web[Vue 管理网页] --> API[HTTP API / 管理员认证]
     API --> Store
+    API -->|受管理鉴权保护的播放与下载| Audio
+    API --> Backup[一致备份 / 可选录音快照]
+    Store --> Backup
+    Audio --> Backup
+    Backup --> ZIP[私有 backups 目录 / ZIP]
     API -->|状态查询与确认操作| TCP
     Store --> Worker[通知与状态观察任务]
     Worker --> Bark[Bark 服务]
@@ -18,14 +26,16 @@ flowchart TB
 - 一块板、两个当前卡槽；固定卡身份可保留换槽与历史卡记录。
 - 协议解析、持久化、通知和网页在本地/云端共用，通过监听地址、来源与路径配置部署环境。
 - 收件持久化与通知任务分离，通知失败不丢弃已经入库的短信。
+- 录音独立上传，按可核对的来电信息关联；无法唯一关联时保留为未关联录音，不按最近一通猜测。播放状态由服务端持久保存，同一实例的浏览器共享。
+- 短信、通话和系统提醒统一查询，首页待推送、重试及成功统计覆盖所有持久任务；Bark 接受不等于手机已收到。
 - 外发先持久记录认领再写入设备连接，未知结果不自动重发；完整操作历史是防重复的重要前提。
 - 统一配置保存在固定数据目录；进程锁避免同目录被应用和停服维护同时占用。
 
 ## 部署与数据管理
 
-本地可直接运行或使用 Docker；云端可在网页前增加 HTTPS、Tunnel 与 Access。HTTP 管理入口与设备 TCP 分别设置访问策略。
+本地可直接运行或使用 Docker；云端可在网页前增加 HTTPS、Tunnel 与 Access。HTTP 管理入口与设备 TCP 分别设置访问策略。录音默认关闭；局域网 HTTP 使用设备来源白名单，公网 HTTPS 在受控代理终止 TLS，并由应用校验实际代理 IP 和路径令牌，不信任转发来源头。
 
-数据库备份、运行配置和日志分别保存，方便独立维护。恢复写入新目录，保留原实例以便核对，并通过外发保护与迁移确认接续发送管理；实例间的数据转移使用一致备份流程。
+ZIP 备份默认只包含数据库与 manifest；勾选录音时以格式 2 同时保存 AMR 和逐文件摘要。运行配置、凭据、容量提醒私有进度和日志另行保存。恢复先校验 ZIP，再写入新目录，暂停旧待发送任务并启用外发保护；迁移确认后才能恢复外发管理。实例间使用一致备份迁移，不自动同步数据库或录音。
 
 ## 目录
 
@@ -38,6 +48,7 @@ flowchart TB
 | `internal/protocol` | 帧及字段解析 |
 | `internal/server` | 会话、API、通知与控制 |
 | `internal/store` | 数据模型、事务与迁移 |
+| `internal/maintenance` | 一致快照、录音打包、完整性检查与受控恢复 |
 | `internal/config`、`internal/diagnostics` | 配置与脱敏诊断 |
 | `web` | Vue 网页、请求流程和测试 |
 | `configs`、`deploy` | 合成配置、部署模板 |

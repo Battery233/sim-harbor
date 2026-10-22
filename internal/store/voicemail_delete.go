@@ -5,17 +5,17 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"regexp"
+
+	"github.com/Battery233/sim-harbor/internal/recording"
 )
 
-var mediaIdentity = regexp.MustCompile(`^[a-f0-9]{32}$`)
 var ErrVoicemailCleanup = errors.New("recording deletion registered; file cleanup pending")
 
 // An empty stored_name is a deletion tombstone. Keep the original digest,
 // identity and call link so retransmission cannot recreate audio or a push.
 // Commit that decision before unlinking. Interrupted cleanup is safe to repeat.
 func (s *Store) DeleteVoicemail(ctx context.Context, dataDir, mediaID string) error {
-	if !mediaIdentity.MatchString(mediaID) {
+	if !recording.ValidMediaID(mediaID) {
 		return safety("invalid_id")
 	}
 	s.voicemailMu.Lock()
@@ -86,7 +86,7 @@ func (s *Store) CleanupDeletedVoicemails(ctx context.Context, dataDir string) er
 	return nil
 }
 func removeDeletedVoicemail(dataDir, mediaID string) error {
-	if !mediaIdentity.MatchString(mediaID) {
+	if !recording.ValidMediaID(mediaID) {
 		return os.ErrInvalid
 	}
 	dir := filepath.Join(dataDir, "voicemail")

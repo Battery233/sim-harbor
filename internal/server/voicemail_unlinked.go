@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Battery233/sim-harbor/internal/diagnostics"
+	"github.com/Battery233/sim-harbor/internal/recording"
 	"github.com/Battery233/sim-harbor/internal/store"
 )
 
@@ -66,7 +67,7 @@ func (s *Server) unlinkedVoicemailRoutes(mux *http.ServeMux) {
 			return
 		}
 		media := r.PathValue("media")
-		if !in.Confirmed || !voicemailFileName.MatchString(media+".amr") {
+		if !in.Confirmed || !recording.ValidFileName(media+".amr") {
 			reply(w, 400, map[string]string{"error": "voicemail_delete_confirmation_required"})
 			return
 		}
@@ -120,7 +121,7 @@ func (s *Server) unlinkedVoicemailRoutes(mux *http.ServeMux) {
 		views := make([]unlinkedVoicemailView, 0, len(items))
 		for _, item := range items {
 			view := unlinkedVoicemailView{UnlinkedVoicemail: item, FileState: "unavailable"}
-			if voicemailFileName.MatchString(item.StoredName) {
+			if recording.ValidFileName(item.StoredName) {
 				view.FileName = item.StoredName
 				file, openErr := s.openVoicemailFile(store.VoicemailFile{Name: item.StoredName, Size: item.Size})
 				if openErr == nil {
@@ -154,7 +155,7 @@ func (s *Server) unlinkedVoicemailRoutes(mux *http.ServeMux) {
 }
 
 func (s *Server) openVoicemailFile(file store.VoicemailFile) (*os.File, error) {
-	if !voicemailFileName.MatchString(file.Name) || file.Size <= 0 || file.Size > maxVoicemailBytes {
+	if !recording.ValidFileName(file.Name) || file.Size <= 0 || file.Size > maxVoicemailBytes {
 		return nil, os.ErrInvalid
 	}
 	path := filepath.Join(s.Config.DataDir, "voicemail", file.Name)

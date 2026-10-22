@@ -4,7 +4,7 @@
 
 以下使用 Compose、Python 3 和本机构建镜像，方便从源码开始部署。Linux 需要 Docker Engine 与 Compose 插件；macOS 可使用 Docker Desktop。安装方法见 [Docker 官方文档](https://docs.docker.com/get-started/get-docker/)，安装后先用 `docker version` 和 `docker compose version` 确认可用。安装目录可按自己的习惯选择。使用局域网端口覆盖示例时，Compose 需为 2.24.4 或更新版本。
 
-当前源码和镜像示例为正式版 `1.1.2`。对应标签的镜像工作流成功后再拉取使用；升级与兼容性见[版本维护](releases.md#从-v111-升级到-v112)。
+当前源码和镜像示例为正式版 `1.1.3`。对应标签的镜像工作流成功后再拉取使用；升级与兼容性见[版本维护](releases.md#从-v112-升级到-v113)。
 
 ## 1. 获取源码
 
@@ -33,7 +33,7 @@ values = {
     'SIM_AES_KEY': secrets.token_urlsafe(12),
     'SIM_AES_IV': secrets.token_urlsafe(12),
     'SIM_BARK_KEY': '',
-    'SIM_IMAGE': 'sim-harbor:1.1.2',
+    'SIM_IMAGE': 'sim-harbor:1.1.3',
     'SIM_HTTP_PORT': '18880',
     'SIM_DEVICE_BIND': '127.0.0.1',
     'SIM_DEVICE_PORT': '39090',
@@ -55,7 +55,7 @@ PY
 
 `deploy/.env.example` 可用于查看环境变量名称；上面的脚本会自动生成带随机凭据的文件。管理员 Token 为随机字符串；AES Key 和 IV 各 16 个 ASCII 字符。板子已有密钥时，可沿用并协调应用端配置。完成基础接入后，按需配置 Bark、短信外发和持续异常提醒。
 
-配置示例默认关闭留言，已有实例不必补填新增字段。v1.1.0 仅在本地部署支持录音上传，启用步骤见[留言说明](voicemail.md)。从旧版升级前先核对[数据库兼容性](releases.md#从-v104-升级到-v110)，不要对已有部署重复执行初始化脚本。
+配置示例默认关闭留言，已有实例不必补填新增字段。当前版本支持局域网 HTTP 直连和经受控代理的公网 HTTPS 录音上传，需主动配置，见[留言说明](voicemail.md)。v1.1.3 沿用 schema 21，从旧版升级前先核对[数据库兼容性](releases.md#从-v112-升级到-v113)，不要对已有部署重复执行初始化脚本。
 
 ## 3. 编辑与权限
 
@@ -74,7 +74,7 @@ sudo chown 65532:65532 configs/container.private.json
 
 ## 4. 构建与启动
 
-所有操作使用同一项目名和同一组文件，避免意外建立另一份数据卷：
+以下为全新安装示例，逐条执行，失败后停止并保留现场。所有操作使用同一项目名和同一组文件；已有实例若使用版本覆盖文件，所有命令都需携带它，见[已有实例升级](releases.md#已有实例升级)。
 
 ```sh
 docker compose --env-file .env -p sim -f compose.yaml -f deploy/site.private.yaml config --quiet

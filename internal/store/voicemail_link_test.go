@@ -18,7 +18,7 @@ func TestVoicemailLinkStaysConservative(t *testing.T) {
 	now := time.Now().Unix()
 	recordCall(t, s, callAt(1, "11111111", "CARD-A", 1000), false)
 	recordCall(t, s, callAt(1, "22222222", "CARD-A", 1001), false)
-	media, _, dup, err := s.SaveVoicemail(ctx, dir, []byte("amr-a"), 1, "11111111", 1001, now)
+	media, _, dup, err := s.SaveVoicemail(ctx, dir, []byte("#!AMR\namr-a"), 1, "11111111", 1001, now)
 	if err != nil || dup || media == "" {
 		t.Fatal(err, dup, media)
 	}
@@ -33,7 +33,7 @@ func TestVoicemailLinkStaysConservative(t *testing.T) {
 
 	recordCall(t, s, callAt(1, "33333333", "CARD-A", 2000), false)
 	recordCall(t, s, callAt(1, "33333333", "CARD-B", 2010), false)
-	if _, _, _, err = s.SaveVoicemail(ctx, dir, []byte("amr-swap"), 1, "33333333", 2005, now); err != nil {
+	if _, _, _, err = s.SaveVoicemail(ctx, dir, []byte("#!AMR\namr-swap"), 1, "33333333", 2005, now); err != nil {
 		t.Fatal(err)
 	}
 	var swapped int
@@ -43,11 +43,11 @@ func TestVoicemailLinkStaysConservative(t *testing.T) {
 
 	recordCall(t, s, callAt(1, "44444444", "CARD-A", 3000), false)
 	recordCall(t, s, callAt(1, "44444444", "CARD-A", 3010), false)
-	first, _, _, err := s.SaveVoicemail(ctx, dir, []byte("amr-first"), 1, "44444444", 3000, now)
+	first, _, _, err := s.SaveVoicemail(ctx, dir, []byte("#!AMR\namr-first"), 1, "44444444", 3000, now)
 	if err != nil || first == "" {
 		t.Fatal(err)
 	}
-	if _, _, _, err = s.SaveVoicemail(ctx, dir, []byte("amr-second"), 1, "44444444", 3005, now); err != nil {
+	if _, _, _, err = s.SaveVoicemail(ctx, dir, []byte("#!AMR\namr-second"), 1, "44444444", 3005, now); err != nil {
 		t.Fatal(err)
 	}
 	var unlinked int
@@ -56,7 +56,7 @@ func TestVoicemailLinkStaysConservative(t *testing.T) {
 	}
 
 	recordCall(t, s, callAt(1, "+8613800138000", "CARD-A", 4000), false)
-	if _, _, _, err = s.SaveVoicemail(ctx, dir, []byte("amr-format"), 1, "13800138000", 4001, now); err != nil {
+	if _, _, _, err = s.SaveVoicemail(ctx, dir, []byte("#!AMR\namr-format"), 1, "13800138000", 4001, now); err != nil {
 		t.Fatal(err)
 	}
 	if callByPhone(t, s, "+8613800138000", now).VoicemailID == 0 {
@@ -64,10 +64,10 @@ func TestVoicemailLinkStaysConservative(t *testing.T) {
 	}
 
 	recordCall(t, s, callAt(1, "55555555", "", 5000), false)
-	if _, _, _, err = s.SaveVoicemail(ctx, dir, []byte("amr-noid"), 1, "55555555", 5001, now); err != nil {
+	if _, _, _, err = s.SaveVoicemail(ctx, dir, []byte("#!AMR\namr-noid"), 1, "55555555", 5001, now); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, _, err = s.SaveVoicemail(ctx, dir, []byte("amr-exact"), 1, "55555555", 5000, now); err != nil {
+	if _, _, _, err = s.SaveVoicemail(ctx, dir, []byte("#!AMR\namr-exact"), 1, "55555555", 5000, now); err != nil {
 		t.Fatal(err)
 	}
 	var linkedExact, linkedNear int
@@ -79,7 +79,7 @@ func TestVoicemailLinkStaysConservative(t *testing.T) {
 
 	recordCall(t, s, callAt(1, "anonymous", "CARD-A", 6000), false)
 	recordCall(t, s, callAt(1, "66666666", "CARD-A", 6001), false)
-	if _, _, _, err = s.SaveVoicemail(ctx, dir, []byte("amr-anon"), 1, "anonymous", 6001, now); err != nil {
+	if _, _, _, err = s.SaveVoicemail(ctx, dir, []byte("#!AMR\namr-anon"), 1, "anonymous", 6001, now); err != nil {
 		t.Fatal(err)
 	}
 	if callByPhone(t, s, "66666666", now).VoicemailID != 0 || callByPhone(t, s, "anonymous", now).VoicemailID != 0 {
@@ -94,7 +94,7 @@ func TestVoicemailWindowKeepsUnknownCardAmbiguous(t *testing.T) {
 	now := time.Now().Unix()
 	recordCall(t, s, callAt(1, "15151515", "CARD-KNOWN", 11000), false)
 	recordCall(t, s, callAt(1, "15151515", "", 11008), false)
-	if _, _, _, err := s.SaveVoicemail(ctx, dir, []byte("amr-mixed"), 1, "15151515", 11005, now); err != nil {
+	if _, _, _, err := s.SaveVoicemail(ctx, dir, []byte("#!AMR\namr-mixed"), 1, "15151515", 11005, now); err != nil {
 		t.Fatal(err)
 	}
 	var linked int
@@ -107,7 +107,7 @@ func TestVoicemailWindowKeepsUnknownCardAmbiguous(t *testing.T) {
 
 	recordCall(t, s, callAt(1, "16161616", "CARD-BEFORE", 12000), false)
 	recordCall(t, s, callAt(1, "16161616", "CARD-AFTER", 12020), false)
-	if _, _, _, err := s.SaveVoicemail(ctx, dir, []byte("amr-swap"), 1, "16161616", 12010, now); err != nil {
+	if _, _, _, err := s.SaveVoicemail(ctx, dir, []byte("#!AMR\namr-swap"), 1, "16161616", 12010, now); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.DB.QueryRow(`SELECT count(*) FROM voicemails WHERE phone='16161616' AND call_id IS NOT NULL`).Scan(&linked); err != nil || linked != 0 {
@@ -116,7 +116,7 @@ func TestVoicemailWindowKeepsUnknownCardAmbiguous(t *testing.T) {
 
 	recordCall(t, s, callAt(1, "17171717", "CARD-NEAR", 13000), false)
 	recordCall(t, s, callAt(1, "17171717", "CARD-NEAR", 13020), false)
-	if _, _, _, err := s.SaveVoicemail(ctx, dir, []byte("amr-near"), 1, "17171717", 13010, now); err != nil {
+	if _, _, _, err := s.SaveVoicemail(ctx, dir, []byte("#!AMR\namr-near"), 1, "17171717", 13010, now); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.DB.QueryRow(`SELECT count(*) FROM voicemails WHERE phone='17171717' AND call_id IS NOT NULL`).Scan(&linked); err != nil || linked != 0 {
@@ -127,7 +127,7 @@ func TestVoicemailWindowKeepsUnknownCardAmbiguous(t *testing.T) {
 	}
 
 	recordCall(t, s, callAt(2, "18181818", "CARD-ONLY", 14000), false)
-	if _, _, _, err := s.SaveVoicemail(ctx, dir, []byte("amr-only"), 2, "18181818", 14002, now); err != nil {
+	if _, _, _, err := s.SaveVoicemail(ctx, dir, []byte("#!AMR\namr-only"), 2, "18181818", 14002, now); err != nil {
 		t.Fatal(err)
 	}
 	only := callByPhone(t, s, "18181818", now)
@@ -172,7 +172,7 @@ func TestVoicemailLateLinkDedupesFileAndNotification(t *testing.T) {
 	}
 
 	recordCall(t, s, callAt(2, "88888888", "CARD-A", 8000), true)
-	if _, _, _, err = s.SaveVoicemail(ctx, dir, []byte("later-call-first"), 2, "88888888", 8000, now); err != nil {
+	if _, _, _, err = s.SaveVoicemail(ctx, dir, []byte("#!AMR\nlater-call-first"), 2, "88888888", 8000, now); err != nil {
 		t.Fatal(err)
 	}
 	first := callByPhone(t, s, "88888888", now)
@@ -190,7 +190,7 @@ func TestVoicemailLinkPreservesMuteAndRestoreHold(t *testing.T) {
 	if _, err := s.DB.Exec(`UPDATE cards SET notification_enabled=0`); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, _, err := s.SaveVoicemail(ctx, dir, []byte("muted"), 1, "12121212", 9000, now); err != nil {
+	if _, _, _, err := s.SaveVoicemail(ctx, dir, []byte("#!AMR\nmuted"), 1, "12121212", 9000, now); err != nil {
 		t.Fatal(err)
 	}
 	muted := callByPhone(t, s, "12121212", now)
@@ -203,7 +203,7 @@ func TestVoicemailLinkPreservesMuteAndRestoreHold(t *testing.T) {
 	if err := s.HoldRestoredData(ctx, "SYNTHETIC-ARCHIVE", now); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, _, err := s.SaveVoicemail(ctx, dir, []byte("held"), 1, "13131313", 9100, now); err != nil {
+	if _, _, _, err := s.SaveVoicemail(ctx, dir, []byte("#!AMR\nheld"), 1, "13131313", 9100, now); err != nil {
 		t.Fatal(err)
 	}
 	held := callByPhone(t, s, "13131313", now)
@@ -219,7 +219,7 @@ func TestVoicemailReconcileAfterRestart(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
 	now := time.Now().Unix()
-	if _, _, _, err := s.SaveVoicemail(ctx, dir, []byte("before-call"), 1, "14141414", 10000, now); err != nil {
+	if _, _, _, err := s.SaveVoicemail(ctx, dir, []byte("#!AMR\nbefore-call"), 1, "14141414", 10000, now); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.DB.Exec(`INSERT INTO calls(key,device_id,card_name,slot,phone,start_ts,state,received_at) VALUES('late','SIM-TEST','',1,'14141414',10000,'ringing',?)`, now); err != nil {

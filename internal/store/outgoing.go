@@ -196,11 +196,6 @@ func (s *Store) CancelOutgoing(ctx context.Context, id string, now int64) error 
 	return nil
 }
 
-func (s *Store) ExpireOutgoing(ctx context.Context, now int64) error {
-	_, e := s.DB.ExecContext(ctx, `UPDATE outgoing SET state='expired' WHERE rank=0 AND state='prepared' AND expires_at<=?; UPDATE outgoing SET state='unknown' WHERE rank BETWEEN 1 AND 3 AND state IN ('waiting_device','accepted','processed') AND deadline_at<=?;`, now, now)
-	return e
-}
-
 func (s *Store) Outgoing(ctx context.Context, id string, now int64) (Outgoing, error) {
 	tx, e := s.DB.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if e != nil {

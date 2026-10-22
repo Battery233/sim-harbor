@@ -1,11 +1,14 @@
 package store
 
-import "context"
+import (
+	"context"
+	"github.com/Battery233/sim-harbor/internal/recording"
+)
 
 // Server-persisted playback state is idempotent and survives ordinary restarts
 // and backup/restore. Calling this API does not fetch or notify any recording.
 func (s *Store) MarkVoicemailPlayed(ctx context.Context, media string, now int64) (int64, error) {
-	if !mediaIdentity.MatchString(media) || now <= 0 {
+	if !recording.ValidMediaID(media) || now <= 0 {
 		return 0, safety("invalid_id")
 	}
 	s.voicemailMu.Lock()

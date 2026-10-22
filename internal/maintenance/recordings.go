@@ -2,7 +2,6 @@ package maintenance
 
 import (
 	"archive/zip"
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"database/sql"
@@ -11,15 +10,13 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"regexp"
 
+	"github.com/Battery233/sim-harbor/internal/recording"
 	"github.com/Battery233/sim-harbor/internal/store"
 )
 
-var recordingName = regexp.MustCompile(`^[a-f0-9]{32}\.amr$`)
-
 func recordingArchiveName(name string) bool {
-	return len(name) > 10 && name[:10] == "voicemail/" && recordingName.MatchString(name[10:])
+	return len(name) > 10 && name[:10] == "voicemail/" && recording.ValidFileName(name[10:])
 }
 
 type contextReader struct {
@@ -40,8 +37,8 @@ func recordingDigest(ctx context.Context, path string) (int64, string, error) {
 		return 0, "", e
 	}
 	defer f.Close()
-	prefix := make([]byte, 6)
-	if _, e = io.ReadFull(f, prefix); e != nil || !bytes.Equal(prefix, []byte("#!AMR\n")) {
+	prefix := make([]byte, len(recording.Header))
+	if _, e = io.ReadFull(f, prefix); e != nil || !recording.ValidAudio(prefix) {
 		return 0, "", ErrInvalidBackup
 	}
 	if _, e = f.Seek(0, io.SeekStart); e != nil {
@@ -99,7 +96,7 @@ func validateRecordingArchive(ctx context.Context, v *validated, files []*zip.Fi
 	declared := map[string]RecordingManifest{}
 	var total int64
 	for _, r := range m.Recordings {
-		if !recordingName.MatchString(r.Name) || r.Bytes <= 0 || r.Bytes > store.RecordingFileBytes || len(r.SHA256) != 64 {
+		if !recording.ValidFileName(r.Name) || r.Bytes <= 0 || r.Bytes > store.RecordingFileBytes || len(r.SHA256) != 64 {
 			return ErrInvalidBackup
 		}
 		if _, ok := declared[r.Name]; ok {

@@ -1,7 +1,6 @@
 package server
 
 import (
-	"bytes"
 	"crypto/subtle"
 	"errors"
 	"io"
@@ -16,10 +15,11 @@ import (
 
 	"github.com/Battery233/sim-harbor/internal/config"
 	"github.com/Battery233/sim-harbor/internal/diagnostics"
+	"github.com/Battery233/sim-harbor/internal/recording"
 	"github.com/Battery233/sim-harbor/internal/store"
 )
 
-const maxVoicemailBytes = 2 << 20
+const maxVoicemailBytes = recording.MaxBytes
 
 var voicemailTokenPattern = regexp.MustCompile(`^[0-9a-f]{32,64}$`)
 
@@ -122,7 +122,7 @@ func readVoicemailUpload(r *http.Request) ([]byte, int, string, int64, string) {
 		}
 	} else {
 		audio, err = io.ReadAll(io.LimitReader(r.Body, maxVoicemailBytes+1))
-		if err != nil || len(audio) == 0 || len(audio) > maxVoicemailBytes || !bytes.HasPrefix(audio, []byte("#!AMR")) {
+		if err != nil || !recording.ValidAudio(audio) {
 			return nil, slot, "", start, "voicemail_media_rejected"
 		}
 	}
@@ -170,7 +170,7 @@ func firstAMRPart(reader *multipart.Reader) ([]byte, string) {
 		if err != nil || len(data) > maxVoicemailBytes {
 			return nil, "voicemail_media_rejected"
 		}
-		if !bytes.HasPrefix(data, []byte("#!AMR")) {
+		if !recording.ValidAudio(data) {
 			continue
 		}
 		if part.FormName() == "media" {

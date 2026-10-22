@@ -26,9 +26,20 @@ func (s *Store) NotificationSuccess(ctx context.Context, now time.Time, loc *tim
 	today := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, loc)
 	start := today.AddDate(0, 0, -29)
 	result := NotificationSuccessStats{Timezone: loc.String()}
-	err := s.DB.QueryRowContext(ctx, notificationRecordsCTE+`SELECT
- (SELECT count(*) FROM records WHERE state='sent' AND accepted_at>=? AND accepted_at<=?),
- (SELECT count(*) FROM records WHERE state='sent' AND accepted_at>=? AND accepted_at<=?),
- (SELECT count(*) FROM records WHERE state='sent' AND accepted_at=0)`, today.Unix(), now.Unix(), start.Unix(), now.Unix()).Scan(&result.Today, &result.Last30Days, &result.Undated)
+	// Count bounded acceptance ranges directly. Reusing the history projection
+	// would materialize all record metadata and bypass these range scans.
+	err := s.DB.QueryRowContext(ctx, `SELECT
+ (SELECT count(*) FROM notifications n JOIN messages m ON m.id=n.message_id WHERE n.state='sent' AND n.accepted_at>=?1 AND n.accepted_at<=?2) +
+ (SELECT count(*) FROM call_notifications n JOIN calls c ON c.id=n.call_id WHERE n.state='sent' AND n.accepted_at>=?1 AND n.accepted_at<=?2) +
+ (SELECT count(*) FROM status_alert_jobs n WHERE n.state='sent' AND n.accepted_at>=?1 AND n.accepted_at<=?2) +
+ (SELECT count(*) FROM system_notifications n WHERE n.state='sent' AND n.accepted_at>=?1 AND n.accepted_at<=?2),
+ (SELECT count(*) FROM notifications n JOIN messages m ON m.id=n.message_id WHERE n.state='sent' AND n.accepted_at>=?3 AND n.accepted_at<=?2) +
+ (SELECT count(*) FROM call_notifications n JOIN calls c ON c.id=n.call_id WHERE n.state='sent' AND n.accepted_at>=?3 AND n.accepted_at<=?2) +
+ (SELECT count(*) FROM status_alert_jobs n WHERE n.state='sent' AND n.accepted_at>=?3 AND n.accepted_at<=?2) +
+ (SELECT count(*) FROM system_notifications n WHERE n.state='sent' AND n.accepted_at>=?3 AND n.accepted_at<=?2),
+ (SELECT count(*) FROM notifications n JOIN messages m ON m.id=n.message_id WHERE n.state='sent' AND n.accepted_at=0) +
+ (SELECT count(*) FROM call_notifications n JOIN calls c ON c.id=n.call_id WHERE n.state='sent' AND n.accepted_at=0) +
+ (SELECT count(*) FROM status_alert_jobs n WHERE n.state='sent' AND n.accepted_at=0) +
+ (SELECT count(*) FROM system_notifications n WHERE n.state='sent' AND n.accepted_at=0)`, today.Unix(), now.Unix(), start.Unix()).Scan(&result.Today, &result.Last30Days, &result.Undated)
 	return result, err
 }

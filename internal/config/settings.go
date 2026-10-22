@@ -1,7 +1,6 @@
 package config
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -238,14 +237,4 @@ func writeSettings(path string, c Config, expected string) error {
 		_ = dir.Close()
 	}
 	return nil
-}
-
-// Useful to compare only the non-secret effective settings, without exposing
-// credential values to a management response.
-func SamePublic(a, b Config) bool {
-	a.Credentials = nil
-	b.Credentials = nil
-	pa, _ := json.Marshal(a)
-	pb, _ := json.Marshal(b)
-	return bytes.Equal(pa, pb)
 }

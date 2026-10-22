@@ -140,12 +140,6 @@ export function voicemailSlotEvidence(slot, channel) {
   return `卡槽 ${slot.slot}：${mode} · ${preset}`
 }
 
-export const voicemailSetupSteps = [
-  '首次开启：先在“录音配置”填写应用接收设置，保存并重启应用。',
-  '读取板子设置，再选择开启或停止自动接听。读取不会发短信。',
-  '核对修改内容和费用后确认执行。结果未确认时，先重新读取，不要重复操作。',
-]
-
 export function voicemailPlan(intent, observed, running) {
   const names = { 0: '不接听', 1: '接听', 2: '接听并录音', 3: '挂断' }
   const channel = observed?.channel === 'sms' ? 'sms' : 'tcp'

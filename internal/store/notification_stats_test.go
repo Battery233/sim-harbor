@@ -8,6 +8,14 @@ import (
 	"time"
 )
 
+func TestNotificationSuccessEmptyHistory(t *testing.T) {
+	s := open(t, filepath.Join(t.TempDir(), "sim.db"))
+	stats, err := s.NotificationSuccess(t.Context(), time.Now(), nil)
+	if err != nil || stats.Today != 0 || stats.Last30Days != 0 || stats.Undated != 0 || stats.Timezone != "UTC" {
+		t.Fatal("empty history must return zero counts", stats, err)
+	}
+}
+
 func TestNotificationSuccessUsesFirstAcceptanceAndIgnoresLateFailure(t *testing.T) {
 	s := open(t, filepath.Join(t.TempDir(), "sim.db"))
 	ctx := context.Background()

@@ -1,12 +1,20 @@
 # 版本发布、Docker 更新与验证
 
-正式版本采用 `主版本.次版本.修订号`，候选版本在末尾加 `-rc.N`，其中 N 从 1 开始递增。当前源码定版为正式版 `1.1.2`，对应标签 `v1.1.2` 和镜像标签 `1.1.2`。应用在已认证的 `/api/state` 和健康接口 `/api/health` 返回 `version`，用于核对实际运行版本。
+正式版本采用 `主版本.次版本.修订号`，候选版本在末尾加 `-rc.N`，其中 N 从 1 开始递增。当前文档以正式版 `1.1.3` 为准，对应标签 `v1.1.3` 和镜像标签 `1.1.3`。应用在已认证的 `/api/state` 和健康接口 `/api/health` 返回 `version`，用于核对实际运行版本；直接请求受保护的健康接口返回 401，不等于容器不健康。
+
+## 从 v1.1.2 升级到 v1.1.3
+
+本版修复录音保存错误路径，统一上传、存储与备份的 AMR-NB 文件头、2 MiB 上限和文件名校验；录音文件及目录同步完成后再提交数据库索引。同时优化推送成功统计与录音角标检查，修正录音恢复提示，并整理使用、部署、备份和安全文档。完整变更见[更新记录](../CHANGELOG.md#113)。
+
+**沿用 schema 21、现有配置及两种备份格式，不新增迁移。** 确认 `v1.1.3` 标签的镜像工作流成功后，沿用完整 Compose 文件、原数据卷和数据目录，将镜像改为 `ghcr.io/battery233/sim-harbor:1.1.3` 后按[切换流程](#3-核对配置并切换)重建服务。现有升级脚本可继续使用，只需传入新版本；无需手工 SQL、恢复数据库或重设板子、上传地址、令牌与 Tunnel。
+
+新上传会拒绝不受支持的 AMR-WB、损坏或不完整的文件头；这属于格式入口校验，不是完整音频解码验证。历史录音不自动转换、删除或修复；若旧文件不符合含录音备份的校验规则，仍会明确报错，保留原文件供核对。从 v1.1.1 或更早版本升级时，继续核对下方相应版本的 schema 与备份兼容性边界。
 
 ## 从 v1.1.1 升级到 v1.1.2
 
 本版增加可选录音 ZIP、跨浏览器播放状态、角标及系统推送查询。schema 20 首次启动自动迁到 **21**，保存录音首次播放时间、容量提醒历史和异常任务记录时间，原配置直接沿用；旧浏览器本地播放标记不导入，历史录音按未播放开始计数。v1.1.1 及更早版本不能直接打开新库，回退需使用升级前数据库，不能手改版本号。备份不勾选录音仍为格式 1，勾选后为格式 2；格式 2 或 schema 21 必须由兼容的新工具恢复。恢复到新目录且保持外发保护。
 
-等 `v1.1.2` 标签的镜像工作流成功后，沿用完整 Compose 文件和原数据卷，仅把镜像版本改为 `ghcr.io/battery233/sim-harbor:1.1.2` 后重建服务。首次启动自动迁移，无需手工 SQL、恢复数据库或重新设置板子。可继续使用已有版本升级脚本；不能通过重新拉取 `1.1.1` 获得这些功能，也不要移动已发布标签。
+确认 `v1.1.2` 标签的镜像工作流成功后，沿用完整 Compose 文件和原数据卷，仅把镜像版本改为 `ghcr.io/battery233/sim-harbor:1.1.2` 后重建服务。首次启动自动迁移，无需手工 SQL、恢复数据库或重新设置板子。沿用下方[切换流程](#3-核对配置并切换)，已有自用升级脚本也应保留相同项目、全部覆盖文件及数据卷；不能通过重新拉取 `1.1.1` 获得这些功能，也不要移动已发布标签。
 
 从 `1.1.2-rc.1` 升级到正式版沿用 schema 21，不新增数据库迁移；仅收紧备份区勾选项与按钮间距并定版。
 
@@ -20,10 +28,10 @@
 
 | 项目 | 作用 | 创建方式 |
 | --- | --- | --- |
-| 应用版本 `1.1.2` | 网页和 API 显示的运行版本 | 在源码与构建配置中维护 |
-| Git 标签 `v1.1.2` | 固定本版源码对应的提交 | 本地创建后推送，或在 GitHub 发布页面创建 |
+| 应用版本 `1.1.3` | 网页和 API 显示的运行版本 | 在源码与构建配置中维护 |
+| Git 标签 `v1.1.3` | 固定本版源码对应的提交 | 本地创建后推送，或在 GitHub 发布页面创建 |
 | GitHub Release | 展示版本说明、源码包及附件 | 在 Releases 页面基于标签发布 |
-| GHCR 镜像 `:1.1.2` | Docker 安装与更新使用的构建产物 | `Release image` 工作流构建并上传 |
+| GHCR 镜像 `:1.1.3` | Docker 安装与更新使用的构建产物 | `Release image` 工作流构建并上传 |
 
 当前 [Release image 工作流](../.github/workflows/release.yml)仅在收到 `v*` 标签推送后运行，负责镜像验证与发布；Release 页面由维护者另外填写和发布。本地提交、普通 `main` 分支推送均不触发镜像上传，当前也没有手动触发或定时发布入口。
 
@@ -41,7 +49,7 @@
    git log -1 --oneline
    ```
 
-   使用 GitHub Desktop 时，先推送 `main`，再在 History 中选中定版提交，通过 Create Tag 创建 `v1.1.2` 并推送标签。不要假定在命令行创建的标签会随 Desktop 推送分支一并上传。已有同名标签时先核对指向；发布标签必须对应最终定版提交。已发布版本保持固定，后续修正使用新提交及相应版本。
+   使用 GitHub Desktop 时，先推送 `main`，再在 History 中选中定版提交，通过 Create Tag 创建 `v1.1.3` 并推送标签。不要假定在命令行创建的标签会随 Desktop 推送分支一并上传。已有同名标签时先核对指向；发布标签必须对应最终定版提交。已发布版本保持固定，后续修正使用新提交及相应版本。
 5. 打开 Actions → Release image，等待验证与发布成功，并核对镜像的 amd64/arm64 架构清单。工作流成功后再检查 Packages 中对应镜像版本。
 6. 在 GitHub 的 Releases → Create a new release 中选择已有标签，填写标题和本版说明。RC 版本标记为预发布，不设为最新正式版，再 Publish release。也可在该页面创建新标签并选择目标提交，再发布以触发构建，步骤见 [GitHub 官方指南](https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository)。
 7. 分享镜像时核对 GHCR 包的可见性；公开使用测试匿名拉取，私有分享准备相应读取权限。复用与分发按 README 的许可说明处理。
@@ -54,9 +62,9 @@ GitHub Release、镜像发布与云端部署各有独立结果，按上述顺序
 
 ```sh
 git fetch origin --tags
-git checkout --detach v1.1.2
-docker build --platform linux/amd64 -t sim-harbor:1.1.2 .
-docker image inspect sim-harbor:1.1.2 --format '{{.Os}}/{{.Architecture}}'
+git checkout --detach v1.1.3
+docker build --platform linux/amd64 -t sim-harbor:1.1.3 .
+docker image inspect sim-harbor:1.1.3 --format '{{.Os}}/{{.Architecture}}'
 ```
 
 尚未发布标签时，也可从已经核对的远端提交构建；记录实际提交 SHA，便于后续对应源码与镜像。
@@ -66,15 +74,17 @@ docker image inspect sim-harbor:1.1.2 --format '{{.Os}}/{{.Architecture}}'
 使用已成功发布的包时：
 
 ```sh
-docker pull ghcr.io/battery233/sim-harbor:1.1.2
-docker buildx imagetools inspect ghcr.io/battery233/sim-harbor:1.1.2
+docker pull ghcr.io/battery233/sim-harbor:1.1.3
+docker buildx imagetools inspect ghcr.io/battery233/sim-harbor:1.1.3
 ```
 
 确认包含目标架构。生产环境可进一步固定镜像清单摘要，使升级和回退目标可追溯。私有包使用具备 `read:packages` 权限的凭据在主机私密登录。
 
 ## 已有实例升级
 
-下面沿用[Docker 安装](deployment-docker.md)中的项目名 `sim` 与 `deploy/site.private.yaml`。既有实例按实际参数操作：例如原项目名为 `sim-cloud`、覆盖文件为 `deploy/cloud.private.yaml`，就将下文所有相应参数一并替换为原值。项目名、端口、数据卷和数据目录保持一致。
+下面沿用[Docker 安装](deployment-docker.md)中的项目名 `sim` 与 `deploy/site.private.yaml`。既有实例按实际参数操作，保留原项目名、全部覆盖文件、端口、数据卷和数据目录。已有 `deploy/release.private.yaml` 时，该文件始终放在最后。
+
+以下逐版小节是历史兼容性说明，其中镜像、页面名称和 ZIP 能力属于对应版本。升级当前版本先看[从 v1.1.2 升级到 v1.1.3](#从-v112-升级到-v113)，较早版本还需核对途经的迁移边界；不需要逐个部署中间版本。下方通用操作示例统一使用 `1.1.3`，逐条执行，任何一步失败后停止并保留现场。
 
 ### 从 v1.1.0 或候选版升级到 v1.1.1
 
@@ -154,7 +164,7 @@ v1.0.4 增加[允许分片时间差的组装](protocol-notes.md#允许分片时�
 ```yaml
 services:
   sim:
-    image: sim-harbor:1.1.2
+    image: sim-harbor:1.1.3
 ```
 
 使用 GHCR 时将 image 换成已验证的完整镜像引用。这个文件集中设置发布镜像，端口、配置、数据挂载与运行策略沿用原文件。旧私有文件若固定了 `sim:旧版本`，本文件必须放在最后以使新镜像生效。
@@ -180,7 +190,7 @@ docker compose --env-file .env -p sim \
 
 ### 4. 升级验收
 
-- 容器健康、镜像版本/架构正确；网页或已认证 API 的 `version` 为 `1.1.2`。
+- 容器健康、镜像版本/架构正确；网页或已认证 API 的 `version` 为 `1.1.3`。
 - 数据目录、卷、HTTP/TCP 端口及私有配置未意外变化；历史、卡名称、备注和推送开关保持。
 - 板子重连后查询新鲜状态，确认当前会话、两卡身份和注册情况。
 - 自然到达的短信能入库，按卡通知和点击链接正常；如需 Bark 连接测试，由操作者确认执行。
@@ -214,6 +224,6 @@ docker system df
 
 ## 公网录音配置的兼容性
 
-公网录音入口从 v1.1.1-rc.4 起支持，不包含在 rc.3 及更早镜像中。容量提醒去重进度单独保存在数据目录的 `voicemail-capacity.private.json`；v1.1.2 起另在数据库记录可查询的容量任务历史，随 ZIP 保存。rc.4 使用 schema 19，rc.5 与正式版 v1.1.1 使用 schema 20，v1.1.2 使用 schema 21；旧配置缺少新字段时沿用局域网 HTTP，保留地址、令牌、卡槽、设备白名单和既有开关，无需为升级修改配置或板子。
+公网录音入口从 v1.1.1-rc.4 起支持，不包含在 rc.3 及更早镜像中。容量提醒去重进度单独保存在数据目录的 `voicemail-capacity.private.json`；v1.1.2 起另在数据库记录可查询的容量任务历史，随 ZIP 保存。rc.4 使用 schema 19，rc.5 与正式版 v1.1.1 使用 schema 20，v1.1.2 / v1.1.3 使用 schema 21；旧配置缺少新字段时沿用局域网 HTTP，保留地址、令牌、卡槽、设备白名单和既有开关，无需为升级修改配置或板子。
 
 主动选择公网模式后，配置可能包含 `voicemail_upload_mode`、`voicemail_proxy_cidrs`、`voicemail_max_storage_mib`，rc.3 及更早版本采用严格字段校验，不能直接读取这些字段。回退前保留最新配置与录音目录，在新版先关闭应用录音接收并重启，按需另行停用板子；准备独立的旧版兼容私有配置，移除上述三个字段，并清空公网 `voicemail_amr_url`（旧版只接受局域网 HTTP）。不要把公网模式直接切回局域网但保留 HTTPS 地址后保存。配置兼容不能替代数据库兼容：从 rc.5 或 v1.1.1 及后续版本回退到 schema 19 的旧程序，还必须使用兼容旧版的升级前数据库；schema 19 也不能交给已发布的 v1.0.4。核对后再按原项目和 Compose 文件操作，不自动回退或删除录音。

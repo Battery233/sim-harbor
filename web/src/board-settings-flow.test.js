@@ -4,7 +4,6 @@ import {
   createBoardSettingsFlow,
   voicemailApplyNote,
   voicemailPlan,
-  voicemailSetupSteps,
   voicemailSlotEvidence,
 } from './board-settings-flow.js'
 test('板子设置没有自动查询，写入须确认且请求只一次，未知后只读确认', async () => {
@@ -253,7 +252,6 @@ test('板子设置结果不完整不声称成功，不支持任意命令', async
   assert.equal(await flow.set(120, 110, true), null)
 })
 test('启用和恢复预览按卡槽给出短信条数，且不含密码或原始指令', () => {
-  assert.equal(voicemailSetupSteps.length, 3)
   const unknown = {
     channel: 'sms',
     amr_url: 'http://192.168.31.10:18880/api/voicemail/amr/abcd',

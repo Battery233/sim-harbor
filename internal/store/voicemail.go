@@ -11,6 +11,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/Battery233/sim-harbor/internal/recording"
 )
 
 func migrateVoicemail(tx *sql.Tx) error {
@@ -64,6 +66,9 @@ func (s *Store) VoicemailFile(ctx context.Context, callID int64) (VoicemailFile,
 // SaveVoicemail stores one AMR recording. The same bytes, slot, start and size
 // return the original media id and do not queue another notification.
 func (s *Store) SaveVoicemail(ctx context.Context, dataDir string, audio []byte, slot int, phone string, start, now int64, capacity ...int64) (mediaID string, createdAt int64, duplicate bool, err error) {
+	if !recording.ValidAudio(audio) {
+		return "", 0, false, recording.ErrInvalid
+	}
 	s.voicemailMu.Lock()
 	defer s.voicemailMu.Unlock()
 	sum := sha256.Sum256(audio)
@@ -100,6 +105,9 @@ func (s *Store) SaveVoicemail(ctx context.Context, dataDir string, audio []byte,
 		return "", 0, false, err
 	}
 	_, writeErr := f.Write(audio)
+	if writeErr == nil {
+		writeErr = f.Sync()
+	}
 	closeErr := f.Close()
 	if writeErr != nil || closeErr != nil {
 		os.Remove(partial)
@@ -112,6 +120,15 @@ func (s *Store) SaveVoicemail(ctx context.Context, dataDir string, audio []byte,
 		os.Remove(partial)
 		return "", 0, false, err
 	}
+	// Persist both the file publication and a newly created voicemail directory
+	// before SQLite can commit an index that reports this recording as saved.
+	if err = syncRecordingDirectory(dir); err == nil {
+		err = syncRecordingDirectory(dataDir)
+	}
+	if err != nil {
+		os.Remove(final)
+		return "", 0, false, err
+	}
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
 		os.Remove(final)
@@ -121,14 +138,8 @@ func (s *Store) SaveVoicemail(ctx context.Context, dataDir string, audio []byte,
 	res, err := tx.ExecContext(ctx, `INSERT INTO voicemails(media_id,slot,phone,start_ts,sha256,size,stored_name,created_at) VALUES(?,?,?,?,?,?,?,?)`, mediaID, slot, phone, start, digest, len(audio), name, now)
 	if err != nil {
 		os.Remove(final)
-		var again string
-		var againAt int64
-		if scanErr := s.DB.QueryRowContext(ctx, `SELECT media_id, created_at FROM voicemails WHERE sha256=? AND slot=? AND start_ts=? AND size=?`, digest, slot, start, len(audio)).Scan(&again, &againAt); scanErr == nil {
-			if linkErr := s.linkStoredVoicemail(ctx, again, phone, now); linkErr != nil {
-				return "", 0, false, linkErr
-			}
-			return again, againAt, true, nil
-		}
+		// voicemailMu serializes insertion with the duplicate lookup above.
+		// Do not query the pool while this transaction owns its only connection.
 		return "", 0, false, err
 	}
 	rowID, err := res.LastInsertId()
@@ -145,6 +156,15 @@ func (s *Store) SaveVoicemail(ctx context.Context, dataDir string, audio []byte,
 		return "", 0, false, err
 	}
 	return mediaID, now, false, nil
+}
+
+func syncRecordingDirectory(path string) error {
+	dir, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer dir.Close()
+	return dir.Sync()
 }
 
 var ErrVoicemailCapacity = errors.New("voicemail capacity reached")

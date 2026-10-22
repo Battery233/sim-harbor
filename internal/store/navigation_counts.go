@@ -4,6 +4,8 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+
+	"github.com/Battery233/sim-harbor/internal/recording"
 )
 
 type NavigationCounts struct {
@@ -21,14 +23,14 @@ func (s *Store) NavigationCounts(ctx context.Context, dataDir string) (Navigatio
 	if err != nil {
 		return counts, err
 	}
-	files := []VoicemailFile{}
+	var files []VoicemailFile
 	for rows.Next() {
 		var id string
 		var f VoicemailFile
 		if err = rows.Scan(&id, &f.Name, &f.Size); err != nil {
 			break
 		}
-		if !mediaIdentity.MatchString(id) || f.Name != id+".amr" {
+		if !recording.ValidMediaID(id) || f.Name != id+".amr" {
 			continue
 		}
 		files = append(files, f)
@@ -39,6 +41,9 @@ func (s *Store) NavigationCounts(ctx context.Context, dataDir string) (Navigatio
 	rows.Close()
 	if err != nil {
 		return counts, err
+	}
+	if len(files) == 0 {
+		return counts, nil
 	}
 	dir := filepath.Join(dataDir, "voicemail")
 	info, err := os.Lstat(dir)

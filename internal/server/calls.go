@@ -5,14 +5,12 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"regexp"
 	"strconv"
 	"time"
 
+	"github.com/Battery233/sim-harbor/internal/recording"
 	"github.com/Battery233/sim-harbor/internal/store"
 )
-
-var voicemailFileName = regexp.MustCompile(`^[0-9a-f]{32}\.amr$`)
 
 func (s *Server) callRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/call-groups", func(w http.ResponseWriter, r *http.Request) {
@@ -115,7 +113,7 @@ func (s *Server) downloadVoicemail(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) serveVoicemailFile(w http.ResponseWriter, r *http.Request, file store.VoicemailFile, downloadName string) {
-	if !voicemailFileName.MatchString(file.Name) || file.Size <= 0 || file.Size > maxVoicemailBytes {
+	if !recording.ValidFileName(file.Name) || file.Size <= 0 || file.Size > maxVoicemailBytes {
 		reply(w, 404, map[string]string{"error": "not_found"})
 		return
 	}

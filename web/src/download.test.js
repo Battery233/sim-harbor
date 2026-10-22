@@ -22,10 +22,15 @@ test('未关联录音已关联或文件缺失时给出可操作提示，不自�
         return new Response(JSON.stringify({ error }), { status: 404 })
       },
     })
-    await assert.rejects(
-      request('/voicemails/unlinked/1/audio'),
-      error === 'voicemail_unavailable' ? /刷新未关联录音/ : /文件缺失或无法读取/,
-    )
+    await assert.rejects(request('/voicemails/unlinked/1/audio'), (e) => {
+      if (error === 'voicemail_unavailable') return /刷新未关联录音/.test(e.message)
+      return (
+        /文件缺失或无法读取/.test(e.message) &&
+        /格式 1/.test(e.message) &&
+        /格式 2/.test(e.message) &&
+        !/ZIP 备份不含 AMR/.test(e.message)
+      )
+    })
   }
   assert.equal(count, 2)
 })

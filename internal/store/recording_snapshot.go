@@ -6,10 +6,12 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+
+	"github.com/Battery233/sim-harbor/internal/recording"
 )
 
 const RecordingBackupBytes int64 = 65536 << 20
-const RecordingFileBytes int64 = 2 << 20
+const RecordingFileBytes int64 = recording.MaxBytes
 const RecordingBackupFiles = 10000
 
 var ErrRecordingBackup = errors.New("recording_backup_incomplete")
@@ -42,7 +44,7 @@ func (s *Store) SnapshotWithRecordings(ctx context.Context, database, dataDir, t
 		if err = rows.Scan(&id, &name, &size, &digest); err != nil {
 			break
 		}
-		if !mediaIdentity.MatchString(id) {
+		if !recording.ValidMediaID(id) {
 			err = ErrRecordingBackup
 			break
 		}
@@ -104,7 +106,7 @@ func (s *Store) SnapshotWithRecordings(ctx context.Context, database, dataDir, t
 			if filepath.Ext(name) != ".amr" || deleted[name] {
 				continue
 			}
-			if !mediaIdentity.MatchString(name[:len(name)-4]) {
+			if !recording.ValidMediaID(name[:len(name)-4]) {
 				return nil, ErrRecordingBackup
 			}
 			f, err := root.Open(name)

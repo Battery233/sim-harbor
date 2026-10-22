@@ -8,6 +8,8 @@
 
 在 Cloudflare 控制台进入网络连接器的 Tunnels 页面，创建 Cloudflared Tunnel。为运行主机选择系统与架构，在该主机执行控制台提供的安装命令；命令包含连接凭据，请在自己的终端私密执行。连接器显示 Healthy 后再新增网页路由。已有健康连接器可跳过创建步骤。
 
+控制台管理的 Tunnel 在控制台维护路由；本地管理的 Tunnel 使用自己的配置文件。下文 YAML 示例用于本地管理方式，不会自动更改由控制台管理的路由。一个 Tunnel 可以承载多个域名，Access 登录要求由匹配该域名/路径的 Access 应用决定，不是整条 Tunnel 统一要求邮箱认证。
+
 ## 2. 发布管理网页
 
 在 Tunnel 的 Published application routes 中新增：
@@ -26,9 +28,9 @@
 
 ## 3. 加入 Access 保护
 
-创建 Self-hosted Access 应用，域名覆盖全站和 API，Allow 策略仅允许自己的身份。为该 Tunnel 路由启用 Protect with Access，并核对 Team 与 Application AUD；使用本地管理的配置可参考 [cloudflared 示例](../deploy/cloudflared.example.yml)，同时按所选宿主端口调整回源。
+创建 Self-hosted Access 应用，使用管理域名覆盖全站和 API，Allow 策略仅允许自己的身份，见[官方 Access 应用说明](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/self-hosted-public-app/)。为该 Tunnel 路由启用 Protect with Access，并核对 Team 与 Application AUD；使用本地管理的配置可参考 [cloudflared 示例](../deploy/cloudflared.example.yml)，同时按所选宿主端口调整回源。
 
-Access 与应用管理员 Token 共同保护入口。保持宿主 HTTP 回环监听，并验证登录身份、API 和回源规则，确保访问统一经过保护。[回源校验参数](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/configure-tunnels/origin-parameters/#access)。
+Access 与应用管理员 Token 共同保护入口。保持宿主 HTTP 回环监听，并验证登录身份、API 和回源规则，确保访问统一经过保护。[回源校验参数](https://developers.cloudflare.com/tunnel/reference/origin-parameters/#access)。
 
 ## 4. 验证
 
@@ -49,4 +51,11 @@ Tunnel 中的 Private CIDR 为 Cloudflare 客户端提供指定 IP/网段的私�
 
 ## 可选的录音上传入口
 
-v1.1.1-rc.4 起的公网录音功能使用单独的 HTTPS 上传域名，不改变已有管理域名的 Access。只将录音路径转发到应用，不要求邮箱登录或交互式挑战；不要将整站和管理 API 一起开放。路由示例见[录音入口配置](../deploy/cloudflared-upload.example.yml)，代理 IP、令牌、限流及容量规则见[公网录音接收](voicemail.md#公网录音接收)。已发布 rc.3 及更早版本不支持此模式。
+当前版本支持独立的 HTTPS 录音上传域名；此能力已包含在正式版 v1.1.1，rc.3 及更早版本不支持。管理域名继续保留原有 Access。
+
+1. 为上传域名添加路由，仅匹配 `^/api/voicemail/amr/[0-9a-f]{32,64}$`，回源到应用 HTTP，其他路径返回 404。共享 Tunnel 时保留已有路由，注意从上到下的匹配顺序，最后保留兜底拒绝规则。规则语义见[官方路由配置](https://developers.cloudflare.com/tunnel/features/locally-managed-tunnels/configuration-file/#how-traffic-is-matched)，本地管理示例见[录音入口配置](../deploy/cloudflared-upload.example.yml)。
+2. 上传域名不使用邮箱登录或交互式挑战。检查是否有通配域名或路径规则覆盖它；只调整上传入口的匹配策略，不关闭管理域名的保护。外部使用 HTTPS，保留完整路径、查询参数和请求体，不对上传做重定向或地址改写。
+3. 在“录音配置”选择公网模式，填写完整上传地址。应用校验路径中的令牌与实际 HTTP 对端代理 IP；HTTP 回源不改变外部 HTTPS 地址，也不需要在应用填写 Cloudflare 公网 IP。宿主连接器回源到 Docker 发布端口时，应用可能看到网桥网关 IP，应填该单 IP `/32`，不能填写端口或整个子网。网桥变化后需重新核对；不要因此放行所有私网地址。
+4. 根路径 404 可用于确认兜底规则，但不能证明录音已经接收。错误令牌、来源拒绝、容量满等响应要结合应用错误类别定位；最终以录音保存、唯一关联和可读取为准。不要把真实上传令牌或完整地址贴到公开日志。
+
+Tunnel 的路径路由不等于上传鉴权；SIMHarbor 只对录音 POST 提供上传入口，管理 API、播放和下载仍要求管理凭据。两种模式的来源检查、限流与容量规则见[公网录音接收](voicemail.md#公网录音接收)。
