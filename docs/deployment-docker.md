@@ -4,7 +4,7 @@
 
 以下使用 Compose、Python 3 和本机构建镜像，方便从源码开始部署。Linux 需要 Docker Engine 与 Compose 插件；macOS 可使用 Docker Desktop。安装方法见 [Docker 官方文档](https://docs.docker.com/get-started/get-docker/)，安装后先用 `docker version` 和 `docker compose version` 确认可用。安装目录可按自己的习惯选择。使用局域网端口覆盖示例时，Compose 需为 2.24.4 或更新版本。
 
-当前源码和镜像示例为正式版 `1.1.3`。对应标签的镜像工作流成功后再拉取使用；升级与兼容性见[版本维护](releases.md#从-v112-升级到-v113)。
+本文使用 `1.1.3` 镜像，支持本机构建或从 GHCR 拉取；升级与兼容性见[版本维护](releases.md#从-v112-升级到-v113)。
 
 ## 1. 获取源码
 

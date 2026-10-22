@@ -16,7 +16,7 @@
 | [Cloudflare 配置](cloudflare-setup.md) | HTTPS 域名、Tunnel、Access 和回源 |
 | [配置说明](configuration.md) | 文件、优先级、字段和生效方式 |
 | [数据维护](data-maintenance.md) | 收件导出、可选含录音的 ZIP 备份、服务器文件管理、检查与迁移恢复 |
-| [版本维护](releases.md) | 标签、Release、镜像发布、Docker 更新与回退 |
+| [版本维护](releases.md) | 版本兼容性、Docker 更新与回退 |
 | [故障排查](troubleshooting.md) | 连接、通知、权限、日志和恢复提示 |
 
 ## 技术资料
@@ -25,6 +25,7 @@
 - [协议说明](protocol-notes.md)
 - [开发与模拟](development.md)
 - [开发规划](roadmap.md)
+- [维护者发布指南](publishing.md)
 - [贡献指南](../CONTRIBUTING.md)
 - [安全说明](../SECURITY.md)
 - [厂家在线文档](reference/board/README.md)

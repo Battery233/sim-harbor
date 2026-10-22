@@ -85,10 +85,10 @@ flowchart LR
 
 ## 版本与开发
 
-当前源码定版为 **1.1.3**，修复录音保存失败时的等待问题，统一录音上传与备份校验，加强落盘可靠性，并优化推送统计和录音角标检查。完整变更见[更新记录](CHANGELOG.md#113)，备份范围见[数据维护](docs/data-maintenance.md)。
+当前版本为 **1.1.3**，修复录音保存失败时的等待问题，统一录音上传与备份校验，加强落盘可靠性，并优化推送统计和录音角标检查。完整变更见[更新记录](CHANGELOG.md#113)，备份范围见[数据维护](docs/data-maintenance.md)。
 
 从 v1.1.2 升级继续沿用 **schema 21**，不新增数据库迁移；从 v1.1.1 首次升级会自动迁移至 schema 21。旧配置直接沿用，无需重设板子、上传地址或 Tunnel。含录音 ZIP 使用格式 2，需由 v1.1.2 或后续兼容维护工具恢复；未勾选录音仍为格式 1。旧版 v1.1.1 不能直接打开 schema 21，回退需使用兼容的升级前数据与容量提醒进度副本，见[升级说明](docs/releases.md#从-v112-升级到-v113)。
 
-镜像需在 `v1.1.3` 标签的构建成功后使用。从 v1.0.4 或更早版本升级，还需核对[数据库兼容性](docs/releases.md#已有实例升级)。
+Docker 镜像：`ghcr.io/battery233/sim-harbor:1.1.3`。从 v1.0.4 或更早版本升级，还需核对[数据库兼容性](docs/releases.md#已有实例升级)。
 
-开发和检查命令见 [CONTRIBUTING.md](CONTRIBUTING.md)。依赖版本见 [go.mod](go.mod)、[前端锁文件](web/package-lock.json)和 [Dockerfile](Dockerfile)。当前暂未添加许可证；复用与分发请先联系维护者，第三方依赖适用各自许可。
+开发和检查命令见 [CONTRIBUTING.md](CONTRIBUTING.md)。依赖版本见 [go.mod](go.mod)、[前端锁文件](web/package-lock.json)和 [Dockerfile](Dockerfile)。项目尚未提供许可证；复用与分发请先联系维护者，第三方依赖适用各自许可。

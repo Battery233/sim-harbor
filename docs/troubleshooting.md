@@ -43,7 +43,7 @@ docker compose --env-file .env -p sim -f compose.yaml -f deploy/site.private.yam
 | --- | --- |
 | HTTPS 拉取/推送停在 Password 提示 | 使用自己的 GitHub Personal Access Token；终端输入凭据不回显字符。也可沿用已配置的 SSH 认证，见 [GitHub 认证说明](https://docs.github.com/en/get-started/git-basics/why-is-git-always-asking-for-my-credentials) |
 | 本地能看到标签，GitHub 没有 | 核对标签指向，再单独推送该标签；分支与标签分别同步 |
-| GitHub 没有 Release | 在 Releases 页面基于已有标签创建；操作顺序见[版本维护](releases.md#标签release-与镜像的关系) |
+| GitHub 没有 Release | 在 Releases 页面基于已有标签创建；操作顺序见[维护者发布指南](publishing.md#标签release-与镜像的关系) |
 | Packages 中没有镜像或拉取失败 | 核对 Actions 的 Release image 结果、镜像标签、目标架构与包可见性；源码本机构建可独立使用 |
 | 更新后出现空白历史库 | 核对 Compose 项目名、实际卷与 `data_directory`，保留原卷和备份，按原参数恢复接入 |
 | 移动数据目录后启动失败 | 核对初始化 JSON 与新目录内 `system.private.json` 的 `data_directory` 一致，文件所有者和权限保持正确 |
