@@ -1431,6 +1431,9 @@ button.danger {
 .backup-controls p {
   margin: 0;
 }
+.backup-controls > .outgoing-actions {
+  margin-top: 0;
+}
 .backup-list {
   list-style: none;
   margin: 12px 0 0;

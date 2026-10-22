@@ -2,7 +2,7 @@
 
 从日常归档到本地/云端迁移，SIMHarbor 提供短信导出、一致备份、完整性检查和受控恢复，让数据随自己的部署选择流转。
 
-本文描述候选版 v1.1.2-rc.1；对应镜像需等待标签构建成功后使用。最近正式版 v1.1.1 使用 schema 20、格式 1 的数据库 ZIP；本候选版首次启动迁至 schema 21，旧配置无需补填。旧版不能直接打开新库，回退需使用升级前数据库。恢复会清除旧等待截止时间并暂停旧任务，避免补推历史来电。
+本文描述 v1.1.2；对应镜像需等待标签构建成功后使用。上一正式版 v1.1.1 使用 schema 20、格式 1 的数据库 ZIP；本版首次启动迁至 schema 21，旧配置无需补填。旧版不能直接打开新库，回退需使用升级前数据库。恢复会清除旧等待截止时间并暂停旧任务，避免补推历史来电。
 
 ## 选择导出或备份
 
@@ -66,7 +66,7 @@ v1.1.0 将数据库继续升级至 schema 19，即使留言保持关闭也一样
 
 格式 1 与格式 2 都保存系统推送历史；恢复时将旧的待发送系统任务暂停，不自动重放。容量提醒私有进度仍独立保存；回退旧版时也需使用兼容的升级前进度副本。含录音的格式 2 ZIP 会在恢复时同时还原数据库和 AMR。格式 1 仍只恢复索引；若选择的旧备份未含录音，需单独把 `voicemail/` 放回新目录，页面会明确显示缺失文件。已删除录音不会因恢复含录音快照而超出该快照的状态复活；恢复本来就会还原备份时点的数据。应用不会按容量或时间自动删除录音。schema 17 的 v1.0.4 备份仍可恢复，所选副本迁到当前 schema 21，原库不受影响。
 
-`1.1.1` 可读取 v1.1.0 及候选版的原配置；v1.1.0 至 rc.4 的库首次启动自动迁移到 schema 20，rc.5 已是 schema 20，不再迁移；数据库 ZIP 格式仍为 1。旧版不能直接打开新库，回退需使用升级前数据库，并移除旧程序不识别的可选配置字段。公网功能会使用新版配置字段，回退前按[公网配置兼容性](releases.md#公网录音配置的兼容性)处理。容量提醒进度文件 `voicemail-capacity.private.json` 需随私有数据目录另存，不包含在 ZIP 中。下方 Docker 示例使用候选版 1.1.2-rc.1，支持格式 1、格式 2 及 schema 21；使用镜像前先确认对应标签构建成功。维护既有实例时，选择与该实例版本和数据库兼容的镜像，见[升级说明](releases.md#从-v110-或候选版升级到-v111)。
+`1.1.1` 可读取 v1.1.0 及候选版的原配置；v1.1.0 至 rc.4 的库首次启动自动迁移到 schema 20，rc.5 已是 schema 20，不再迁移；数据库 ZIP 格式仍为 1。旧版不能直接打开新库，回退需使用升级前数据库，并移除旧程序不识别的可选配置字段。公网功能会使用新版配置字段，回退前按[公网配置兼容性](releases.md#公网录音配置的兼容性)处理。容量提醒进度文件 `voicemail-capacity.private.json` 需随私有数据目录另存，不包含在 ZIP 中。下方 Docker 示例使用 1.1.2，支持格式 1、格式 2 及 schema 21；使用镜像前先确认对应标签构建成功。维护既有实例时，选择与该实例版本和数据库兼容的镜像，见[升级说明](releases.md#从-v110-或候选版升级到-v111)。
 
 原数据目录升级由新版应用首次启动时完成，已有迁移确认保留；`restore` 则建立新的恢复身份并重新启用外发保护，两种操作不同。备份与检查不会迁移原数据库，恢复会迁移所选副本。从 v1.0.2 升级至 v1.0.3 不迁移数据库；各版本的配置兼容性与升级方式见[版本维护](releases.md#已有实例升级)。
 
@@ -105,13 +105,13 @@ GOTOOLCHAIN=local go run ./cmd/maintain backup \
 
 ### 校验备份
 
-以下为仅数据库 ZIP 的临时空间示例：临时内存目录用于校验解包，容器退出后释放。含录音包使用本候选版工具时，应将 `/data` 改为容量足够的私有磁盘临时目录；640 MiB 的 tmpfs 不适合大录音包。先独立检查备份包：
+以下为仅数据库 ZIP 的临时空间示例：临时内存目录用于校验解包，容器退出后释放。含录音包使用本版工具时，应将 `/data` 改为容量足够的私有磁盘临时目录；640 MiB 的 tmpfs 不适合大录音包。先独立检查备份包：
 
 ```sh
 docker run --rm --network none --read-only \
   --tmpfs /data:rw,uid=65532,gid=65532,mode=0700,size=640m \
   --mount type=bind,src=/srv/sim-backups,dst=/backup,readonly \
-  --entrypoint /app/sim-data sim-harbor:1.1.2-rc.1 \
+  --entrypoint /app/sim-data sim-harbor:1.1.2 \
   inspect -backup /backup/sim-backup.zip
 ```
 
@@ -127,7 +127,7 @@ docker volume inspect sim_sim-data --format '{{.Name}}'
 docker run --rm --network none --read-only \
   --mount type=bind,src=/srv/sim-backups,dst=/backup,readonly \
   --mount type=volume,src=sim_sim-data,dst=/data \
-  --entrypoint /app/sim-data sim-harbor:1.1.2-rc.1 \
+  --entrypoint /app/sim-data sim-harbor:1.1.2 \
   restore -backup /backup/sim-backup.zip \
   -to /data/restored-instance \
   -confirm-archive REPLACE_WITH_ARCHIVE_SHA256
@@ -137,7 +137,7 @@ docker run --rm --network none --read-only \
 
 ### 停服备份
 
-网页暂时不可用或正式迁移需要最终快照时，可以用源实例对应版本的镜像执行停服备份。下面以 `sim-harbor:1.1.2-rc.1`、数据目录 `/data` 为例；如果实际目录为 `/data/storage`，调整 `-data-directory`。宿主 `/srv/sim-backups` 需允许容器 UID 65532 写入，输出文件使用尚不存在的新名称。
+网页暂时不可用或正式迁移需要最终快照时，可以用源实例对应版本的镜像执行停服备份。下面以 `sim-harbor:1.1.2`、数据目录 `/data` 为例；如果实际目录为 `/data/storage`，调整 `-data-directory`。宿主 `/srv/sim-backups` 需允许容器 UID 65532 写入，输出文件使用尚不存在的新名称。
 
 先沿用原项目名及完整 Compose 文件停止应用；这里展示基础安装参数：
 
@@ -152,7 +152,7 @@ docker compose --env-file .env -p sim \
 docker run --rm --network none --read-only \
   --mount type=volume,src=sim_sim-data,dst=/data \
   --mount type=bind,src=/srv/sim-backups,dst=/backup \
-  --entrypoint /app/sim-data sim-harbor:1.1.2-rc.1 \
+  --entrypoint /app/sim-data sim-harbor:1.1.2 \
   backup -data-directory /data -output /backup/sim-backup-final.zip
 ```
 
