@@ -519,3 +519,49 @@ func TestBackupStatusWriteFailureRetainsExistingArchive(t *testing.T) {
 		t.Fatal("existing archive lost", files)
 	}
 }
+
+func TestManagedRecordingBackupBothDestinationsAndRestore(t *testing.T) {
+	for _, destination := range []string{"browser", "server"} {
+		t.Run(destination, func(t *testing.T) {
+			s, _ := fixture(t, 0, func(c *config.Config) { c.AdminToken = "SYNTHETIC-MANAGED-AUDIO-TOKEN" })
+			audio := []byte("#!AMR\nSYNTHETIC-MANAGED-AUDIO")
+			media, _, _, err := s.Store.SaveVoicemail(t.Context(), s.Config.DataDir, audio, 0, "", 0, 1000)
+			if err != nil {
+				t.Fatal(err)
+			}
+			id := strings.Repeat("c", 32)
+			body := fmt.Sprintf(`{"id":%q,"destination":%q,"confirmed":true,"include_recordings":true}`, id, destination)
+			w := backupAPI(s, "POST", "/backups", body, s.Config.AdminToken)
+			if w.Code != 202 {
+				t.Fatal(w.Code, w.Body)
+			}
+			s.backups.wg.Wait()
+			files := backupList(t, s, s.Config.AdminToken)
+			if len(files) != 1 || !files[0].IncludeRecordings || files[0].RecordingFiles != 1 {
+				t.Fatal(files)
+			}
+			w = backupAPI(s, "POST", "/backups", fmt.Sprintf(`{"id":%q,"destination":%q,"confirmed":true,"include_recordings":false}`, id, destination), s.Config.AdminToken)
+			if w.Code != 409 {
+				t.Fatal("changed replay options accepted", w.Code)
+			}
+			w = backupAPI(s, "GET", "/backups/"+id+"/download", "", s.Config.AdminToken)
+			if w.Code != 200 {
+				t.Fatal(w.Code)
+			}
+			path := filepath.Join(t.TempDir(), "saved.zip")
+			os.WriteFile(path, w.Body.Bytes(), 0600)
+			preview, err := maintenance.Inspect(t.Context(), path)
+			if err != nil || preview.Manifest.Format != 2 {
+				t.Fatal(err)
+			}
+			target := filepath.Join(t.TempDir(), "restored")
+			if _, err = maintenance.Restore(t.Context(), path, target, preview.ArchiveSHA256); err != nil {
+				t.Fatal(err)
+			}
+			got, err := os.ReadFile(filepath.Join(target, "voicemail", media+".amr"))
+			if err != nil || !bytes.Equal(got, audio) {
+				t.Fatal("managed audio roundtrip", err)
+			}
+		})
+	}
+}

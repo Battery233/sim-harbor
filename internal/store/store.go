@@ -253,6 +253,24 @@ DELETE FROM schema_version; INSERT INTO schema_version VALUES(6);`); e != nil {
 		}
 	}
 
+	if version.Int64 < 21 {
+		if e = migrateSystemNotifications(tx); e != nil {
+			return e
+		}
+		var found int
+		if e = tx.QueryRow(`SELECT count(*) FROM pragma_table_info('voicemails') WHERE name='played_at'`).Scan(&found); e != nil {
+			return e
+		}
+		if found == 0 {
+			if _, e = tx.Exec(`ALTER TABLE voicemails ADD COLUMN played_at INTEGER NOT NULL DEFAULT 0 CHECK(played_at>=0)`); e != nil {
+				return e
+			}
+		}
+		if _, e = tx.Exec(`DELETE FROM schema_version; INSERT INTO schema_version VALUES(21)`); e != nil {
+			return e
+		}
+	}
+
 	if _, e = tx.Exec(`UPDATE calls SET state='unknown' WHERE ended=0`); e != nil {
 		return e
 	}
@@ -466,7 +484,7 @@ func (s *Store) State(ctx context.Context, id string) (map[string]any, error) {
 		return nil, e
 	}
 	var pending, failed int
-	if e = s.DB.QueryRowContext(ctx, `SELECT count(*),coalesce(sum(attempts>0),0) FROM (SELECT state,attempts FROM notifications UNION ALL SELECT state,attempts FROM call_notifications UNION ALL SELECT state,attempts FROM status_alert_jobs) WHERE state='pending'`).Scan(&pending, &failed); e != nil {
+	if e = s.DB.QueryRowContext(ctx, notificationRecordsCTE+`SELECT count(*),coalesce(sum(attempts>0),0) FROM records WHERE state='pending'`).Scan(&pending, &failed); e != nil {
 		return nil, e
 	}
 	return map[string]any{"last_seen": ts, "status_received_at": statusAt, "reported": reported, "notifications_pending": pending, "notifications_retrying": failed}, nil

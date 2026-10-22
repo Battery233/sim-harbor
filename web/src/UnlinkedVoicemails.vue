@@ -7,26 +7,32 @@ import { createUnlinkedVoicemailFlow, unlinkedAudioPath } from './unlinked-voice
 import { createVoicemailPlayer } from './voicemail-player.js'
 import { createVoicemailContext, decodeVoicemail } from './voicemail-audio.js'
 import { saveFile } from './download.js'
-import { createListeningHistory, recordingBadge } from './voicemail-listening.js'
+import { markRecordingPlayed, recordingBadge } from './voicemail-listening.js'
 const props = defineProps({ request: Function, fileRequest: Function })
 const view = ref({ items: [], next: 0 }),
   loading = ref(false),
   loaded = ref(false),
   error = ref(''),
   playback = ref({ id: 0, phase: 'idle' })
-let stopped = false,
-  browserStorage
-try {
-  browserStorage = globalThis.localStorage
-} catch {
-  /* Storage can be disabled. */
-}
-const listening = createListeningHistory(browserStorage)
-const listeningVersion = ref(0)
+let stopped = false
 const playingMedia = new Map()
+const markingPlayed = new Set()
 function badge(item) {
-  void listeningVersion.value
-  return recordingBadge([item.file_name?.replace(/\.amr$/, '')], listening)
+  return recordingBadge(1, item.played_at ? 0 : 1)
+}
+async function confirmPlayed(item) {
+  if (!item || item.played_at || markingPlayed.has(item.id)) return
+  markingPlayed.add(item.id)
+  try {
+    item.played_at = await markRecordingPlayed(
+      (...args) => props.request(...args),
+      item.file_name?.replace(/\.amr$/, ''),
+    )
+  } catch (e) {
+    if (!stopped) error.value = '录音已开始播放，但播放标记保存失败：' + e.message
+  } finally {
+    markingPlayed.delete(item.id)
+  }
 }
 const flow = createUnlinkedVoicemailFlow({
   request: (...args) => props.request(...args),
@@ -39,8 +45,7 @@ const player = createVoicemailPlayer({
   createContext: createVoicemailContext(),
   onChange(state) {
     playback.value = state
-    if (state.phase === 'playing' && listening.mark(playingMedia.get(state.id)))
-      listeningVersion.value++
+    if (state.phase === 'playing') void confirmPlayed(playingMedia.get(state.id))
   },
 })
 function date(ts) {
@@ -70,7 +75,7 @@ async function recordingChanged(problem) {
 async function play(item) {
   error.value = ''
   try {
-    playingMedia.set(item.id, item.file_name?.replace(/\.amr$/, ''))
+    playingMedia.set(item.id, item)
     await player.toggle(item)
   } catch (e) {
     if (!stopped) error.value = e.message
@@ -157,7 +162,7 @@ onUnmounted(() => {
               ? '索引已保存，录音文件缺失。'
               : '录音文件暂不可读取，或文件信息与索引不一致。'
           }}
-          如果仅恢复了数据库 ZIP，还需要单独放回 voicemail/ 目录。
+          若恢复的备份未包含录音，还需单独恢复 voicemail/ 目录。
         </p>
         <div class="outgoing-actions">
           <button

@@ -14,9 +14,10 @@ import (
 	"github.com/Battery233/sim-harbor/internal/diagnostics"
 )
 
-// Kept outside the recording directory and database, so schema 19 and the
-// existing database ZIP format remain unchanged. This file contains no secrets.
+// The existing private checkpoint remains the delivery deduplication authority.
+// The database now additionally records queryable capacity task history.
 type voicemailCapacityCheckpoint struct {
+	JobID    int64 `json:"job_id,omitempty"`
 	Limit    int64 `json:"limit"`
 	Notified int64 `json:"notified"`
 	Target   int64 `json:"target"`
@@ -35,7 +36,10 @@ func voicemailCapacityLevel(used, limit int64) int64 {
 // The notification worker holds notificationGate, as for other push jobs.
 // Never run network requests on the recording-upload request path.
 func (s *Server) observeVoicemailCapacity(ctx context.Context, now time.Time) error {
-	if s.Config.VoicemailMode() != "public" || !s.Config.VoicemailEnabled || s.Config.BarkKey == "" {
+	if s.Config.VoicemailMode() != "public" || !s.Config.VoicemailEnabled {
+		return s.Store.CancelCapacityNotifications(ctx, "capacity_disabled")
+	}
+	if s.Config.BarkKey == "" {
 		return nil
 	}
 	blocked, err := s.Store.RestoreBlocked(ctx)
@@ -55,9 +59,15 @@ func (s *Server) observeVoicemailCapacity(ctx context.Context, now time.Time) er
 	}
 	changedLimit := state.Limit != limit
 	if changedLimit {
+		if err = s.Store.CancelCapacityNotifications(ctx, "capacity_limit_changed"); err != nil {
+			return err
+		}
 		state = voicemailCapacityCheckpoint{Limit: limit}
 	}
 	if level == 0 {
+		if err = s.Store.CancelCapacityNotifications(ctx, "capacity_recovered"); err != nil {
+			return err
+		}
 		if exists && (changedLimit || state.Notified != 0 || state.Target != 0 || state.Attempts != 0 || state.NextAt != 0) {
 			return writeVoicemailCapacity(path, voicemailCapacityCheckpoint{Limit: limit})
 		}
@@ -67,8 +77,22 @@ func (s *Server) observeVoicemailCapacity(ctx context.Context, now time.Time) er
 		return nil
 	}
 	// Coalesce missed bands and pending retries into one current-state reminder.
+	previousJob, previousTarget := state.JobID, state.Target
 	state.Target = level
+	jobID, accepted, err := s.Store.PrepareCapacityNotification(ctx, state.JobID, level, limit, used, state.NextAt, now.Unix())
+	if err != nil {
+		return err
+	}
+	state.JobID = jobID
+	if accepted {
+		state.Notified = level
+		state.Target, state.Attempts, state.NextAt = 0, 0, 0
+		return writeVoicemailCapacity(path, state)
+	}
 	if now.Unix() < state.NextAt {
+		if previousJob != state.JobID || previousTarget != state.Target {
+			return writeVoicemailCapacity(path, state)
+		}
 		return nil
 	}
 	state.Attempts = min(state.Attempts+1, 16)
@@ -77,6 +101,9 @@ func (s *Server) observeVoicemailCapacity(ctx context.Context, now time.Time) er
 	// Reserve the retry time before contacting Bark. A lost response or process
 	// crash may lead to a retry, but cannot create a rapid notification loop.
 	if err = writeVoicemailCapacity(path, state); err != nil {
+		return err
+	}
+	if err = s.Store.ReserveCapacityNotification(ctx, state.JobID, state.NextAt); err != nil {
 		return err
 	}
 	ok, outcome := s.sendPush(ctx, map[string]any{
@@ -93,6 +120,11 @@ func (s *Server) observeVoicemailCapacity(ctx context.Context, now time.Time) er
 		code = "voicemail_capacity_notified"
 	}
 	s.Logs.Record(code, diagnostics.Fields{Outcome: outcome})
+	resultCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	if err = s.Store.CapacityNotificationResult(resultCtx, state.JobID, ok, outcome, now.Unix()); err != nil {
+		return err
+	}
 	// Persist even if the worker context was canceled while Bark responded.
 	return writeVoicemailCapacity(path, state)
 }
@@ -115,7 +147,7 @@ func readVoicemailCapacity(path string) (voicemailCapacityCheckpoint, bool, erro
 	}
 	d := json.NewDecoder(bytes.NewReader(p))
 	d.DisallowUnknownFields()
-	if d.Decode(&state) != nil || d.Decode(new(any)) != io.EOF || state.Limit < 16<<20 || state.Limit > 65536<<20 || state.Notified < 0 || state.Notified > state.Limit || state.Target < 0 || state.Target > state.Limit || state.Attempts < 0 || state.Attempts > 16 || state.NextAt < 0 {
+	if d.Decode(&state) != nil || d.Decode(new(any)) != io.EOF || state.JobID < 0 || state.Limit < 16<<20 || state.Limit > 65536<<20 || state.Notified < 0 || state.Notified > state.Limit || state.Target < 0 || state.Target > state.Limit || state.Attempts < 0 || state.Attempts > 16 || state.NextAt < 0 {
 		return state, true, errors.New("invalid capacity checkpoint")
 	}
 	return state, true, nil

@@ -43,6 +43,7 @@ type Call struct {
 	VoicemailID       int64  `json:"voicemail_id,omitempty"`
 	VoicemailBytes    int64  `json:"voicemail_bytes,omitempty"`
 	VoicemailMediaID  string `json:"voicemail_media_id,omitempty"`
+	VoicemailPlayedAt int64  `json:"voicemail_played_at,omitempty"`
 	VoicemailDeleted  bool   `json:"voicemail_deleted,omitempty"`
 	TimeoutAt         int64  `json:"-"`
 	Ended             bool   `json:"-"`
@@ -50,7 +51,7 @@ type Call struct {
 	Conflict          bool   `json:"-"`
 }
 
-const callColumns = `c.id,coalesce(c.card_id,''),c.card_name,c.slot,c.phone,c.start_ts,c.connected_ts,c.end_ts,c.ended,c.connection_report,c.conflict,c.state,coalesce(n.state,'not_queued'),coalesce(n.attempts,0),coalesce(n.last_error,''),coalesce(n.accepted_at,0),c.received_at,coalesce(n.kind,''),c.timeout_at,coalesce(v.id,0),coalesce(v.size,0),coalesce(v.media_id,''),EXISTS(SELECT 1 FROM voicemails vd WHERE vd.call_id=c.id AND vd.stored_name='')`
+const callColumns = `c.id,coalesce(c.card_id,''),c.card_name,c.slot,c.phone,c.start_ts,c.connected_ts,c.end_ts,c.ended,c.connection_report,c.conflict,c.state,coalesce(n.state,'not_queued'),coalesce(n.attempts,0),coalesce(n.last_error,''),coalesce(n.accepted_at,0),c.received_at,coalesce(n.kind,''),c.timeout_at,coalesce(v.id,0),coalesce(v.size,0),coalesce(v.media_id,''),EXISTS(SELECT 1 FROM voicemails vd WHERE vd.call_id=c.id AND vd.stored_name=''),coalesce(v.played_at,0)`
 const callJoin = ` FROM calls c LEFT JOIN call_notifications n ON n.id=(SELECT max(cn.id) FROM call_notifications cn WHERE cn.call_id=c.id) LEFT JOIN voicemails v ON v.call_id=c.id AND v.stored_name<>'' `
 
 // Search the stored caller and the labels displayed by the shared UI.
@@ -59,7 +60,7 @@ const callSearchFilter = ` (?='' OR instr(lower(c.phone),lower(?))>0 OR instr(CA
 
 func scanCall(row scanner, now int64, extra ...any) (Call, error) {
 	var c Call
-	fields := []any{&c.ID, &c.CardID, &c.CardName, &c.Slot, &c.Phone, &c.StartTS, &c.ConnectedTS, &c.EndTS, &c.Ended, &c.ConnectionReport, &c.Conflict, &c.State, &c.NotificationState, &c.Failures, &c.LastError, &c.AcceptedAt, &c.ReceivedAt, &c.NotificationKind, &c.TimeoutAt, &c.VoicemailID, &c.VoicemailBytes, &c.VoicemailMediaID, &c.VoicemailDeleted}
+	fields := []any{&c.ID, &c.CardID, &c.CardName, &c.Slot, &c.Phone, &c.StartTS, &c.ConnectedTS, &c.EndTS, &c.Ended, &c.ConnectionReport, &c.Conflict, &c.State, &c.NotificationState, &c.Failures, &c.LastError, &c.AcceptedAt, &c.ReceivedAt, &c.NotificationKind, &c.TimeoutAt, &c.VoicemailID, &c.VoicemailBytes, &c.VoicemailMediaID, &c.VoicemailDeleted, &c.VoicemailPlayedAt}
 	err := row.Scan(append(fields, extra...)...)
 	if !c.Ended && (now < c.StartTS || (c.TimeoutAt > 0 && now >= c.TimeoutAt) || (c.TimeoutAt == 0 && now-c.StartTS > 300)) {
 		c.State = "unknown"

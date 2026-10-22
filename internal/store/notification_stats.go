@@ -16,7 +16,7 @@ type NotificationSuccessStats struct {
 	Timezone   string `json:"timezone"`
 }
 
-// Count SMS and missed-call tasks once, by first Bark acceptance, never by event time
+// Count all persisted push tasks once, by first Bark acceptance, never by event time
 // or next retry time. Calendar dates use the configured zone (including DST).
 func (s *Store) NotificationSuccess(ctx context.Context, now time.Time, loc *time.Location) (NotificationSuccessStats, error) {
 	if loc == nil {
@@ -26,9 +26,9 @@ func (s *Store) NotificationSuccess(ctx context.Context, now time.Time, loc *tim
 	today := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, loc)
 	start := today.AddDate(0, 0, -29)
 	result := NotificationSuccessStats{Timezone: loc.String()}
-	err := s.DB.QueryRowContext(ctx, `WITH successes AS (SELECT state,accepted_at FROM notifications UNION ALL SELECT state,accepted_at FROM call_notifications) SELECT
- (SELECT count(*) FROM successes WHERE state='sent' AND accepted_at>=? AND accepted_at<=?),
- (SELECT count(*) FROM successes WHERE state='sent' AND accepted_at>=? AND accepted_at<=?),
- (SELECT count(*) FROM successes WHERE state='sent' AND accepted_at=0)`, today.Unix(), now.Unix(), start.Unix(), now.Unix()).Scan(&result.Today, &result.Last30Days, &result.Undated)
+	err := s.DB.QueryRowContext(ctx, notificationRecordsCTE+`SELECT
+ (SELECT count(*) FROM records WHERE state='sent' AND accepted_at>=? AND accepted_at<=?),
+ (SELECT count(*) FROM records WHERE state='sent' AND accepted_at>=? AND accepted_at<=?),
+ (SELECT count(*) FROM records WHERE state='sent' AND accepted_at=0)`, today.Unix(), now.Unix(), start.Unix(), now.Unix()).Scan(&result.Today, &result.Last30Days, &result.Undated)
 	return result, err
 }

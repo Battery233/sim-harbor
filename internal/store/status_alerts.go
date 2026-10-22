@@ -68,7 +68,7 @@ func (s *Store) ObserveAlerts(ctx context.Context, input []AlertObservation, now
 			if !active && now-bad >= threshold {
 				episode++
 				active = true
-				if _, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO status_alert_jobs(key,episode,kind,label) VALUES(?,?,'fault',?)`, o.Key, episode, cleanCardName(o.Label)); err != nil {
+				if _, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO status_alert_jobs(key,episode,kind,label,created_at) VALUES(?,?,'fault',?,?)`, o.Key, episode, cleanCardName(o.Label), now); err != nil {
 					return err
 				}
 			}
@@ -87,7 +87,7 @@ func (s *Store) ObserveAlerts(ctx context.Context, input []AlertObservation, now
 						return err
 					}
 					if sent > 0 {
-						if _, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO status_alert_jobs(key,episode,kind,label) VALUES(?,?,'recovery',?)`, o.Key, episode, cleanCardName(o.Label)); err != nil {
+						if _, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO status_alert_jobs(key,episode,kind,label,created_at) VALUES(?,?,'recovery',?,?)`, o.Key, episode, cleanCardName(o.Label), now); err != nil {
 							return err
 						}
 					}

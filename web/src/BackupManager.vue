@@ -16,6 +16,7 @@ const current = reactive({
 })
 const destination = ref('browser'),
   consent = ref(false),
+  includeRecordings = ref(false),
   deleteID = ref('')
 const flow = createBackupFlow({
   request: (...args) => props.request(...args),
@@ -39,7 +40,7 @@ function date(n) {
 }
 async function start() {
   deleteID.value = ''
-  await flow.start(destination.value, consent.value)
+  await flow.start(destination.value, consent.value, includeRecordings.value)
   consent.value = false
   await flow.load()
 }
@@ -68,9 +69,9 @@ onUnmounted(() => {
     <h2>
       数据库备份
       <InfoTip label="数据库备份说明"
-        >在线生成一致快照，不发送短信或触发通知。数据库上限 512 MiB，ZIP 上限 544 MiB。ZIP
-        包含业务数据和留言索引，不包含 AMR
-        录音、应用配置、密钥或日志。恢复仍需使用维护工具，写入全新目录。</InfoTip
+        >在线生成一致快照，不发送短信或触发通知。数据库上限 512 MiB；不含录音 ZIP 上限 544
+        MiB。勾选后加入应用 voicemail/ 中的完整 AMR
+        录音（含未关联录音），不包含已删除录音、上传临时文件、应用配置、密钥或日志。恢复使用新版维护工具，写入全新目录。</InfoTip
       >
     </h2>
     <p v-if="state?.outbound_restore_blocked" class="notice">
@@ -88,11 +89,22 @@ onUnmounted(() => {
         </select></label
       >
       <p class="tiny muted" v-if="destination === 'browser'">
-        支持直接写入文件的浏览器会先让你选择保存位置；其他浏览器使用普通下载，较大文件会占用更多内存。服务器临时副本保留
-        1 小时，中断后可重试。
+        支持直接写入文件的浏览器会先让你选择保存位置；其他浏览器使用普通下载，较大文件会占用更多内存。超过
+        256 MiB 的文件需使用支持直接写入文件的浏览器；服务器临时副本保留 1 小时，中断后可重试。
       </p>
       <p class="tiny muted" v-else>
         关闭页面后仍会生成，完成后长期保留，可再下载或手动删除。备份与应用在同一台机器上，重要文件建议再下载另存。
+      </p>
+      <label class="consent"
+        ><input
+          type="checkbox"
+          v-model="includeRecordings"
+          :disabled="working || running || current.uncertain"
+        />同时备份通话录音（应用 voicemail/ 目录）</label
+      >
+      <p class="tiny muted">
+        包括已关联和未关联的完整 AMR
+        文件；有索引但文件缺失、损坏或无法读取时，本次含录音备份失败，不会静默跳过。录音多时建议先保存到服务器。
       </p>
       <label class="consent"
         ><input
@@ -132,8 +144,12 @@ onUnmounted(() => {
       <button class="secondary" @click="flow.acknowledge">已核对列表，允许重新操作</button>
     </div>
     <p class="tiny muted">
-      ZIP 不含通话录音。需要保留录音时，请另行保存数据目录中的
-      voicemail/。下载完成提示不表示录音已备份。
+      {{
+        includeRecordings
+          ? '本次将打包完整 AMR 文件，并逐一校验；恢复后自动放回 voicemail/。'
+          : '未勾选录音：ZIP 只包含数据库和录音索引，恢复音频仍需另存 voicemail/。'
+      }}
+      请根据下方每份文件的“含录音/仅数据库”标记核对实际内容；新格式需用新版维护工具恢复。
     </p>
     <template v-if="current.data">
       <h3>服务器上的备份</h3>
@@ -151,7 +167,12 @@ onUnmounted(() => {
             <strong>{{ file.name }}</strong
             ><span class="tiny muted"
               >{{ date(file.created_at) }} · {{ bytes(file.bytes) }} ·
-              {{ file.expires_at ? `临时保留至 ${date(file.expires_at)}` : '长期保留' }}</span
+              {{
+                file.include_recordings
+                  ? '含录音（' + file.recording_files + ' 个文件）'
+                  : '仅数据库，不含录音'
+              }}
+              · {{ file.expires_at ? `临时保留至 ${date(file.expires_at)}` : '长期保留' }}</span
             ><span class="tiny muted backup-hash">SHA-256：{{ file.sha256 }}</span>
           </div>
           <div class="outgoing-actions">

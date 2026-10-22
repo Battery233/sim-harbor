@@ -3,6 +3,7 @@ import InfoTip from './InfoTip.vue'
 import {
   createNotificationRecords,
   notificationKinds,
+  notificationSubject,
   notificationRecordLink,
   notificationCanceledReason,
 } from './notification-records.js'
@@ -16,7 +17,7 @@ const props = defineProps({ request: Function })
 const data = ref(null),
   rows = ref([]),
   filter = ref('all'),
-  source = ref('all'),
+  source = ref('everything'),
   next = ref(''),
   busy = ref(false),
   error = ref(''),
@@ -36,7 +37,7 @@ const canTest = computed(
     (!data.value.summary.test_at || now.value - data.value.summary.test_at >= 60),
 )
 function date(ts) {
-  return ts ? new Date(ts * 1000).toLocaleString('zh-CN', { hour12: false }) : '尚未测试'
+  return ts ? new Date(ts * 1000).toLocaleString('zh-CN', { hour12: false }) : '时间未记录'
 }
 function reason(code) {
   return notificationErrors[code] || '等待尝试'
@@ -120,8 +121,8 @@ onUnmounted(() => {
         <div>
           <p class="eyebrow">NOTIFICATIONS</p>
           <h2>
-            短信与通话推送
-            <InfoTip label="短信与通话推送说明"
+            推送记录
+            <InfoTip label="推送记录说明"
               >通知失败不会丢失短信。Bark 接受请求后，仍需在 iPhone 核对；重复尝试可能重复通知。<br />凭据可在系统配置中修改，保存后另行确认重启应用生效；旧密钥不回显。启用不会补推过去的短信。</InfoTip
             >
           </h2>
@@ -130,8 +131,8 @@ onUnmounted(() => {
       </div>
 
       <p class="muted tiny">
-        这里仅展示短信与通话的 Bark
-        推送记录，包括未接来电、留言、录音未到和迟到录音。不含运行异常与容量提醒。
+        这里展示短信、通话与系统 Bark 推送记录。系统推送包括板子／SIM
+        异常、恢复及录音容量提醒；容量提醒历史从支持该功能的版本起记录。
       </p>
       <dl class="notification-config">
         <div>
@@ -151,9 +152,8 @@ onUnmounted(() => {
       </div>
       <div class="notification-test">
         <p class="tiny">
-          最近连接测试 · {{ date(data?.summary?.test_at) }}<br />{{
-            data?.summary?.test_at ? reason(data.summary.test_outcome) : '尚未发出测试'
-          }}
+          最近连接测试 · {{ data?.summary?.test_at ? date(data.summary.test_at) : '尚未测试'
+          }}<br />{{ data?.summary?.test_at ? reason(data.summary.test_outcome) : '尚未发出测试' }}
         </p>
         <label class="consent"
           ><input
@@ -176,6 +176,8 @@ onUnmounted(() => {
             <option value="all">短信与通话</option>
             <option value="sms">仅短信</option>
             <option value="call">仅通话</option>
+            <option value="system">系统推送</option>
+            <option value="everything">全部类型</option>
           </select></label
         >
         <label class="notification-filter"
@@ -192,7 +194,7 @@ onUnmounted(() => {
       <ul class="notification-list">
         <li v-for="row in rows" :key="row.key">
           <div class="result-line">
-            <strong>{{ notificationKinds[row.kind] }} · 卡槽 {{ row.slot }}</strong
+            <strong>{{ notificationKinds[row.kind] }} · {{ notificationSubject(row) }}</strong
             ><span class="badge">{{
               row.state === 'canceled'
                 ? '已取消'
@@ -224,7 +226,11 @@ onUnmounted(() => {
             记录时间 {{ date(row.recorded_at)
             }}<span v-if="row.accepted_at"> · Bark 接受于 {{ date(row.accepted_at) }}</span>
           </p>
-          <div class="outgoing-actions">
+          <p v-if="row.kind === 'voicemail_capacity'" class="tiny muted">
+            提醒时已用 {{ (row.used_bytes / 1024 / 1024).toFixed(1) }} /
+            {{ (row.limit_bytes / 1024 / 1024).toFixed(0) }} MiB
+          </p>
+          <div class="outgoing-actions" v-if="row.source !== 'system'">
             <span v-if="row.message_deleted" class="tiny muted">原短信已删除</span>
             <a :href="notificationRecordLink(row)">{{
               row.source === 'call' ? '查看来电记录' : '查看原短信'

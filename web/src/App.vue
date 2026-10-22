@@ -23,6 +23,29 @@ import { createAuthHeaders } from './auth-config.js'
 const tab = ref('inbox')
 const linkedCall = ref(0)
 const callsCardFilter = ref('')
+const navigationCounts = ref(null)
+let navigationRevision = 0
+async function loadNavigationCounts() {
+  if (stopped || locked.value) return
+  const revision = ++navigationRevision,
+    version = generation
+  try {
+    const counts = await api('/navigation-counts')
+    if (
+      !['unread_messages', 'unplayed_recordings'].every(
+        (k) => Number.isSafeInteger(counts[k]) && counts[k] >= 0,
+      )
+    )
+      throw new Error('counts')
+    if (!stopped && version === generation && revision === navigationRevision)
+      navigationCounts.value = counts
+  } catch {
+    if (!stopped && revision === navigationRevision) navigationCounts.value = null
+  }
+}
+function badgeCount(value) {
+  return value > 99 ? '99+' : String(value)
+}
 
 const state = ref(null),
   items = ref([]),
@@ -64,6 +87,7 @@ const errors = {
   card_number_mismatch: '填写的号码和这块卡当前的本机号码不一致，已阻止发送。',
   voicemail_sms_rejected:
     '板子没有接受短信指令。请核对用户密码；密码错误时 30 分钟内可能不再回复。上传地址可能已经写入，请重新读取后再确认。',
+  voicemail_unavailable: '这段录音已不存在，请刷新列表核对。',
   voicemail_delete_failed: '录音删除未完成，请刷新列表核对，不会自动重试。',
   voicemail_cleanup_pending:
     '删除已登记，但文件清理未完成。请查看运行诊断；下次启动会重试已登记的清理。',
@@ -204,7 +228,7 @@ async function refresh(reset = false, force = false) {
   const version = generation
   loading.value = true
   try {
-    await Promise.all([loadState(), loadMessages(reset)])
+    await Promise.all([loadState(), loadMessages(reset), loadNavigationCounts()])
     if (version !== generation || stopped) return false
     error.value = ''
     return true
@@ -271,6 +295,7 @@ async function openMessage(m) {
       await api(`/messages/${m.id}/read`, 'POST')
       if (version !== generation || stopped) return
       m.read = true
+      void loadNavigationCounts()
       if (selected.value?.id === m.id) selected.value = { ...m, read: true }
     } catch (e) {
       if (version === generation && !stopped) error.value = e.message
@@ -337,6 +362,8 @@ async function openLinked() {
     }
 }
 function forget() {
+  navigationCounts.value = null
+  navigationRevision++
   authHeaders.reset()
   deletion.reset()
   generation++
@@ -367,6 +394,8 @@ function closeMessage() {
   history.replaceState(null, '', u)
 }
 onMounted(async () => {
+  window.addEventListener('simharbor:recording-played', loadNavigationCounts)
+  window.addEventListener('simharbor:recording-deleted', loadNavigationCounts)
   interval = setInterval(() => {
     if (!locked.value) refresh()
   }, 15000)
@@ -375,6 +404,8 @@ onMounted(async () => {
   if (!stopped) await openLinked()
 })
 onUnmounted(() => {
+  window.removeEventListener('simharbor:recording-played', loadNavigationCounts)
+  window.removeEventListener('simharbor:recording-deleted', loadNavigationCounts)
   stopped = true
   clearInterval(interval)
   clearInterval(clock)
@@ -492,7 +523,7 @@ onUnmounted(() => {
                   state?.notification_success?.timezone === 'Asia/Shanghai'
                     ? '北京时间'
                     : state?.notification_success?.timezone || '配置时区'
-                }}自然日统计，近30天含今天，包含短信和未接来电。另有{{
+                }}自然日统计，近30天含今天，包含短信、通话、运行异常／恢复和录音容量提醒。另有{{
                   state?.notification_success?.undated || 0
                 }}条旧成功未记录日期，未计入统计。通知任务单独保存，推送失败不会丢失短信。
               </InfoTip>
@@ -530,11 +561,26 @@ onUnmounted(() => {
           ><span v-if="wifi.ssid">{{ wifiName(wifi.ssid) }}</span>
         </div>
         <nav class="box-tabs" aria-label="管理功能">
-          <button :class="{ primary: tab === 'inbox' }" @click="tab = 'inbox'">收件箱</button>
+          <button :class="{ primary: tab === 'inbox' }" @click="tab = 'inbox'">
+            收件箱<span
+              v-if="navigationCounts?.unread_messages"
+              class="tab-unread-count"
+              :aria-label="navigationCounts.unread_messages + ' 条未读短信'"
+              >{{ badgeCount(navigationCounts.unread_messages) }}</span
+            >
+          </button>
           <button :class="{ primary: tab === 'outbox' }" @click="tab = 'outbox'">发件箱</button>
-          <button :class="{ primary: tab === 'calls' }" @click="viewCardCalls()">来电记录</button>
+          <button :class="{ primary: tab === 'calls' }" @click="viewCardCalls()">
+            来电记录<span
+              v-if="navigationCounts?.unplayed_recordings"
+              class="tab-unread-count"
+              :aria-label="navigationCounts.unplayed_recordings + ' 条通话录音未播放'"
+              title="尚未播放的通话录音，跨浏览器同步"
+              >{{ badgeCount(navigationCounts.unplayed_recordings) }}</span
+            >
+          </button>
           <button :class="{ primary: tab === 'notifications' }" @click="tab = 'notifications'">
-            短信与通话推送
+            推送记录
           </button>
           <button :class="{ primary: tab === 'diagnostics' }" @click="tab = 'diagnostics'">
             运行诊断

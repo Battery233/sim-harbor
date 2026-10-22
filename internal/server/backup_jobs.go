@@ -24,7 +24,7 @@ import (
 )
 
 const backupLifetime = time.Hour
-const backupJobTimeout = 5 * time.Minute
+const backupJobTimeout = 10 * time.Minute
 const backupFileLimit = 20
 
 var backupID = regexp.MustCompile(`^[a-f0-9]{32}$`)
@@ -35,19 +35,22 @@ var errBackupFiles = errors.New("backup_files_unavailable")
 var errBackupCleanup = errors.New("backup_cleanup_failed")
 
 type backupFile struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Bytes       int64  `json:"bytes"`
-	CreatedAt   int64  `json:"created_at"`
-	Destination string `json:"destination"`
-	ExpiresAt   int64  `json:"expires_at,omitempty"`
-	SHA256      string `json:"sha256"`
+	ID                string `json:"id"`
+	Name              string `json:"name"`
+	Bytes             int64  `json:"bytes"`
+	CreatedAt         int64  `json:"created_at"`
+	Destination       string `json:"destination"`
+	ExpiresAt         int64  `json:"expires_at,omitempty"`
+	SHA256            string `json:"sha256"`
+	IncludeRecordings bool   `json:"include_recordings,omitempty"`
+	RecordingFiles    int    `json:"recording_files,omitempty"`
 }
 type backupJob struct {
-	ID          string `json:"id"`
-	Destination string `json:"destination"`
-	State       string `json:"state"`
-	Error       string `json:"error,omitempty"`
+	ID                string `json:"id"`
+	Destination       string `json:"destination"`
+	State             string `json:"state"`
+	Error             string `json:"error,omitempty"`
+	IncludeRecordings bool   `json:"include_recordings,omitempty"`
 }
 type backupRepository struct {
 	mu        sync.Mutex
@@ -288,7 +291,7 @@ func (b *backupRepository) fileLocked(id string) (backupFile, error) {
 	if err = readBackupJSON(b.root, filepath.Join(id, "metadata.json"), &f); err != nil {
 		return f, err
 	}
-	if f.ID != id || f.CreatedAt <= 0 || f.Bytes <= 0 || f.Bytes > maintenance.MaxArchive || len(f.SHA256) != 64 ||
+	if f.RecordingFiles < 0 || f.RecordingFiles > store.RecordingBackupFiles || (!f.IncludeRecordings && f.Bytes > maintenance.DatabaseArchiveLimit) || f.ID != id || f.CreatedAt <= 0 || f.Bytes <= 0 || f.Bytes > maintenance.MaxArchive || len(f.SHA256) != 64 ||
 		f.Name != "sim-backup-"+time.Unix(f.CreatedAt, 0).UTC().Format("20060102T150405Z")+"-"+id+".zip" ||
 		f.Destination != "server" && f.Destination != "browser" ||
 		f.Destination == "server" && f.ExpiresAt != 0 || f.Destination == "browser" && f.ExpiresAt != f.CreatedAt+int64(backupLifetime/time.Second) {
@@ -341,6 +344,8 @@ func backupFailure(err error) string {
 	switch {
 	case errors.Is(err, errBackupCleanup):
 		return "backup_cleanup_failed"
+	case errors.Is(err, store.ErrRecordingBackup):
+		return "recording_backup_incomplete"
 	case errors.Is(err, store.ErrBackupLimit):
 		return "backup_limit_exceeded"
 	case errors.Is(err, errBackupStorage):
@@ -391,9 +396,10 @@ func (s *Server) listBackups(w http.ResponseWriter, r *http.Request) {
 }
 func (s *Server) startBackup(w http.ResponseWriter, r *http.Request) {
 	var action struct {
-		Confirmed   bool   `json:"confirmed"`
-		ID          string `json:"id"`
-		Destination string `json:"destination"`
+		Confirmed         bool   `json:"confirmed"`
+		ID                string `json:"id"`
+		Destination       string `json:"destination"`
+		IncludeRecordings bool   `json:"include_recordings"`
 	}
 	if !decodeAction(w, r, &action) {
 		return
@@ -413,7 +419,7 @@ func (s *Server) startBackup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if b.job != nil && b.job.ID == action.ID {
-		if b.job.Destination != action.Destination {
+		if b.job.Destination != action.Destination || b.job.IncludeRecordings != action.IncludeRecordings {
 			reply(w, 409, map[string]string{"error": "backup_request_conflict"})
 			return
 		}
@@ -421,11 +427,11 @@ func (s *Server) startBackup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if f, err := b.fileLocked(action.ID); err == nil {
-		if f.Destination != action.Destination {
+		if f.Destination != action.Destination || f.IncludeRecordings != action.IncludeRecordings {
 			reply(w, 409, map[string]string{"error": "backup_request_conflict"})
 			return
 		}
-		reply(w, 200, backupJob{ID: f.ID, Destination: f.Destination, State: "ready"})
+		reply(w, 200, backupJob{ID: f.ID, Destination: f.Destination, State: "ready", IncludeRecordings: f.IncludeRecordings})
 		return
 	} else if !os.IsNotExist(err) {
 		reply(w, 503, map[string]string{"error": "backup_files_unavailable"})
@@ -449,14 +455,14 @@ func (s *Server) startBackup(w http.ResponseWriter, r *http.Request) {
 	}()
 	files, err := b.filesLocked(time.Now())
 	if err == nil {
-		err = s.backupSpaceLocked(r.Context(), b, files)
+		err = s.backupSpaceLocked(r.Context(), b, files, action.IncludeRecordings)
 	}
 	if err != nil {
 		reply(w, 503, map[string]string{"error": backupFailure(err)})
 		return
 	}
 	s.migrationBackup, s.migrationPreview = nil, nil
-	b.job = &backupJob{ID: action.ID, Destination: action.Destination, State: "running"}
+	b.job = &backupJob{ID: action.ID, Destination: action.Destination, State: "running", IncludeRecordings: action.IncludeRecordings}
 	if err = b.saveJobLocked(); err != nil {
 		b.job.State, b.job.Error = "failed", "backup_failed"
 		reply(w, 503, map[string]string{"error": "backup_failed"})
@@ -467,7 +473,7 @@ func (s *Server) startBackup(w http.ResponseWriter, r *http.Request) {
 	go s.generateBackup(b, *b.job)
 	reply(w, 202, b.job)
 }
-func (s *Server) backupSpaceLocked(ctx context.Context, b *backupRepository, files []backupFile) error {
+func (s *Server) backupSpaceLocked(ctx context.Context, b *backupRepository, files []backupFile, withAudio bool) error {
 	var pages, size int64
 	if err := s.Store.DB.QueryRowContext(ctx, `PRAGMA page_count`).Scan(&pages); err != nil {
 		return err
@@ -479,6 +485,16 @@ func (s *Server) backupSpaceLocked(ctx context.Context, b *backupRepository, fil
 		return store.ErrBackupLimit
 	}
 	estimate := pages * size
+	if withAudio {
+		audio, _, err := s.Store.VoicemailDirectoryStats(ctx, s.Config.DataDir)
+		if err != nil {
+			return err
+		}
+		if audio > store.RecordingBackupBytes {
+			return store.ErrBackupLimit
+		}
+		estimate += audio
+	}
 	var used int64
 	for _, f := range files {
 		used += f.Bytes
@@ -537,12 +553,12 @@ func (s *Server) createSavedBackup(ctx context.Context, b *backupRepository, job
 	if err != nil {
 		return
 	}
-	a, err := maintenance.Create(ctx, s.Store, filepath.Join(b.root.Name(), pending))
+	a, err := maintenance.Create(ctx, s.Store, filepath.Join(b.root.Name(), pending), maintenance.BackupOptions{IncludeRecordings: job.IncludeRecordings, DataDirectory: s.Config.DataDir})
 	if err != nil {
 		return f, before, err
 	}
 	defer a.Close()
-	f = backupFile{ID: job.ID, CreatedAt: time.Now().Unix(), Destination: job.Destination, SHA256: a.SHA256}
+	f = backupFile{ID: job.ID, CreatedAt: time.Now().Unix(), Destination: job.Destination, SHA256: a.SHA256, IncludeRecordings: job.IncludeRecordings, RecordingFiles: len(a.Manifest.Recordings)}
 	if job.Destination == "browser" {
 		f.ExpiresAt = f.CreatedAt + int64(backupLifetime/time.Second)
 	}

@@ -73,7 +73,7 @@ function date(ts) {
       />
       <span class="muted"
         >{{ (call.voicemail_bytes / 1024).toFixed(1) }} KB（1 KB = 1024 字节）。下载仍是原始
-        AMR。若提示录音文件不在，说明只恢复了索引，需要把 voicemail/ 目录单独放回。</span
+        AMR。若文件缺失，请核对恢复的备份是否包含录音；未包含时需另行恢复 voicemail/。</span
       >
     </div>
     <p class="tiny" :class="{ 'call-push-sent': call.notification_state === 'sent' }">

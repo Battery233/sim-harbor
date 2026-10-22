@@ -60,6 +60,9 @@ func Restore(ctx context.Context, backup, target, expected string) (RestoreResul
 	if _, e = os.Lstat(abs); e == nil || !os.IsNotExist(e) {
 		return result, errors.Join(os.ErrExist, errors.New("restore_target_exists"))
 	}
+	if e = requireSpace(v.root, v.preview.Manifest.Bytes+(64<<20)); e != nil {
+		return result, e
+	}
 	s, e := store.Open(v.database)
 	if e != nil {
 		return result, e
@@ -84,6 +87,13 @@ func Restore(ctx context.Context, backup, target, expected string) (RestoreResul
 		return result, e
 	}
 	if e = os.MkdirAll(filepath.Dir(abs), 0700); e != nil {
+		return result, e
+	}
+	need := v.preview.Manifest.Bytes + (64 << 20)
+	for _, r := range v.preview.Manifest.Recordings {
+		need += r.Bytes
+	}
+	if e = requireSpace(filepath.Dir(abs), need); e != nil {
 		return result, e
 	}
 	if e = os.Mkdir(abs, 0700); e != nil {
@@ -112,7 +122,7 @@ func Restore(ctx context.Context, backup, target, expected string) (RestoreResul
 	if e != nil {
 		return result, e
 	}
-	_, e = io.Copy(f, source)
+	_, e = io.Copy(f, &contextReader{ctx: ctx, reader: source})
 	if e == nil {
 		e = f.Sync()
 	}
@@ -124,6 +134,9 @@ func Restore(ctx context.Context, backup, target, expected string) (RestoreResul
 		return result, ce
 	}
 	if e = ctx.Err(); e != nil {
+		return result, e
+	}
+	if e = restoreRecordings(ctx, v, abs); e != nil {
 		return result, e
 	}
 	if e = publishDatabase(pending, filepath.Join(abs, "sim.db")); e != nil {
@@ -143,7 +156,7 @@ func Restore(ctx context.Context, backup, target, expected string) (RestoreResul
 
 // Offline backup shares the service's lease and opens the existing source
 // read-only, without applying migrations or restart state transitions.
-func BackupDirectory(ctx context.Context, dir, output string) error {
+func BackupDirectory(ctx context.Context, dir, output string, includeRecordings ...bool) error {
 	if _, e := os.Stat(filepath.Join(dir, "sim.db")); e != nil {
 		return e
 	}
@@ -166,7 +179,8 @@ func BackupDirectory(ctx context.Context, dir, output string) error {
 	}
 	defer db.Close()
 	db.SetMaxOpenConns(1)
-	a, e := Create(ctx, &store.Store{DB: db}, dir)
+	withAudio := len(includeRecordings) > 0 && includeRecordings[0]
+	a, e := Create(ctx, &store.Store{DB: db}, dir, BackupOptions{IncludeRecordings: withAudio, DataDirectory: dir})
 	if e != nil {
 		return e
 	}
@@ -186,7 +200,7 @@ func BackupDirectory(ctx context.Context, dir, output string) error {
 			os.Remove(output)
 		}
 	}()
-	_, e = io.Copy(dest, source)
+	_, e = io.Copy(dest, &contextReader{ctx: ctx, reader: source})
 	if e == nil {
 		e = dest.Sync()
 	}

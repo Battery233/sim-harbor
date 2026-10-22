@@ -48,3 +48,33 @@ func TestMixedNotificationRecordsRequireAuthAndExposeSafeLinks(t *testing.T) {
 		}
 	}
 }
+
+func TestSystemNotificationRecordAPIHasNoBusinessLinksOrPrivateLabels(t *testing.T) {
+	s, _ := fixture(t, 0, func(c *config.Config) { c.AdminToken = "SYNTHETIC-SYSTEM-ACCESS-TOKEN" })
+	if _, err := s.Store.DB.Exec(`INSERT INTO status_alert_monitors(key) VALUES('board');INSERT INTO status_alert_jobs(key,episode,kind,label,created_at) VALUES('board',1,'fault','PRIVATE-SYNTHETIC-LABEL',1000)`); err != nil {
+		t.Fatal(err)
+	}
+	id, _, err := s.Store.PrepareCapacityNotification(t.Context(), 0, 256, 512, 270, 0, 1000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Store.CapacityNotificationResult(t.Context(), id, false, "http_rejected", 1000)
+	for _, source := range []string{"system", "everything"} {
+		w := request(s, "GET", "http://example.invalid/api/notification-records?type="+source, "Bearer "+s.Config.AdminToken, "")
+		var page struct {
+			Items   []store.NotificationRecord `json:"items"`
+			Summary store.NotificationSummary  `json:"summary"`
+		}
+		if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &page) != nil || len(page.Items) != 2 || page.Summary.Pending != 2 || page.Summary.Retrying != 1 {
+			t.Fatal(w.Code, w.Body)
+		}
+		for _, r := range page.Items {
+			if r.Source != "system" || r.MessageID != 0 || r.CallID != 0 {
+				t.Fatal(r)
+			}
+		}
+		if strings.Contains(w.Body.String(), "PRIVATE-SYNTHETIC") {
+			t.Fatal("private label exposed")
+		}
+	}
+}

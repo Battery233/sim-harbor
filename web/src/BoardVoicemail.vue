@@ -256,7 +256,7 @@ const addressStatus = computed(() => {
           ></label
         >
       </template>
-      <p class="tiny muted recording-board-hint">
+      <p class="recording-board-hint" role="note">
         也可在板子 /mgr
         后台手动设置来电应答和同一个上传地址，无需重复发送设置短信。手动设置后请重新读取核对；TCP
         无法读回的项目仍需在板子后台确认。

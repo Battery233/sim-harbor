@@ -1,3 +1,4 @@
+import { databaseArchiveLimit } from './backup-limits.js'
 import { backupErrors } from './backup-errors.js'
 
 // Binary/text downloads share the management credential and never retry.
@@ -72,7 +73,7 @@ export function createFileRequest({
         Number.isSafeInteger(options.max) && options.max > 0
           ? options.max
           : type === 'application/zip'
-            ? 544 * 1024 * 1024
+            ? databaseArchiveLimit
             : 32 * 1024 * 1024
       if (!length || !/^\d+$/.test(length) || Number(length) > max)
         throw new Error('文件大小无效。')

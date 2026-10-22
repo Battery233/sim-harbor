@@ -11,7 +11,7 @@ import {
   groupContainsCall,
 } from './call-history.js'
 import CallEntry from './CallEntry.vue'
-import { createListeningHistory, recordingBadge } from './voicemail-listening.js'
+import { markRecordingPlayed, recordingBadge } from './voicemail-listening.js'
 import { saveFile } from './download.js'
 import { createVoicemailPlayer } from './voicemail-player.js'
 import { createVoicemailContext, decodeVoicemail } from './voicemail-audio.js'
@@ -43,18 +43,19 @@ let stopped = false,
   loading = false,
   timer,
   linkRevision = 0
-let browserStorage
-try {
-  browserStorage = globalThis.localStorage
-} catch {
-  /* Storage can be disabled. */
-}
-const listening = createListeningHistory(browserStorage)
-const listeningVersion = ref(0)
 const recordingByCall = new Map()
-function badge(ids) {
-  void listeningVersion.value
-  return recordingBadge(ids, listening)
+const markingPlayed = new Set()
+async function confirmPlayed(call) {
+  if (!call?.voicemail_media_id || call.voicemail_played_at || markingPlayed.has(call.id)) return
+  markingPlayed.add(call.id)
+  try {
+    call.voicemail_played_at = await markRecordingPlayed(request, call.voicemail_media_id)
+    if (!stopped) await refresh()
+  } catch (e) {
+    if (!stopped) error.value = '录音已开始播放，但播放标记保存失败：' + e.message
+  } finally {
+    markingPlayed.delete(call.id)
+  }
 }
 const details = new Map()
 const request = (...args) => props.request(...args)
@@ -67,8 +68,7 @@ const player = createVoicemailPlayer({
   createContext: createVoicemailContext(),
   onChange(state) {
     playback.value = state
-    if (state.phase === 'playing' && listening.mark(recordingByCall.get(state.id)))
-      listeningVersion.value++
+    if (state.phase === 'playing') void confirmPlayed(recordingByCall.get(state.id))
   },
 })
 const history = createCallGroups({
@@ -155,7 +155,7 @@ function clearDetails() {
 async function playVoicemail(call) {
   error.value = ''
   try {
-    recordingByCall.set(call.id, call.voicemail_media_id)
+    recordingByCall.set(call.id, call)
     await player.toggle(call)
   } catch (e) {
     if (!stopped) error.value = e.message
@@ -236,7 +236,7 @@ onUnmounted(() => {
           <InfoTip label="来电记录说明"
             >同一卡、同一号码合并展示，展开查看每次来电。默认只记录，不会接听、拒接或拨号；完整未接结束后提醒一次；只有开始时，5分钟后兜底提醒。留言需在录音配置单独开启。录音可使用局域网直连或经
             HTTPS 公网入口上传；已保存的 AMR 可在网页内播放，也可下载。<br />次数包含这张卡的全部已保存来电，逐次记录保留当时卡名和卡槽。匿名或身份未确认的来电单独展示。📼
-            标记同组任一次来电有录音；成功开始播放后记为已播放，仅保存在当前浏览器，下载不改变标记。时长以板子上报为准；Bark
+            标记同组任一次来电有录音；成功开始播放后记为已播放，保存在服务器并跨浏览器同步；下载不改变标记。时长以板子上报为准；Bark
             已接受不等于 iPhone 已读。</InfoTip
           >
         </h2>
@@ -279,9 +279,13 @@ onUnmounted(() => {
               {{ callerLabel(group.latest.phone) }} <span class="count">{{ group.count }} 次</span>
             </h3>
             <span class="call-badges">
-              <span v-if="badge(group.voicemail_media_ids)" class="badge recording-badge">{{
-                badge(group.voicemail_media_ids)
-              }}</span>
+              <span
+                v-if="recordingBadge(group.voicemail_media_ids?.length, group.unplayed_recordings)"
+                class="badge recording-badge"
+                >{{
+                  recordingBadge(group.voicemail_media_ids?.length, group.unplayed_recordings)
+                }}</span
+              >
               <span class="badge" :class="{ 'missed-call': group.latest.state === 'missed' }">{{
                 callStates[group.latest.state]
               }}</span>
@@ -320,7 +324,9 @@ onUnmounted(() => {
             :request="request"
             :on-recording-changed="recordingChanged"
             :playback="playback"
-            :recording-label="badge(call.voicemail_media_id ? [call.voicemail_media_id] : [])"
+            :recording-label="
+              recordingBadge(call.voicemail_id ? 1 : 0, call.voicemail_played_at ? 0 : 1)
+            "
           />
           <div v-if="expanded[group.id].next" class="load-more">
             <button :disabled="expanded[group.id].loading" @click="loadDetails(group, true)">

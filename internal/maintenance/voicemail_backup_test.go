@@ -140,7 +140,7 @@ func TestDelayedVoicemailNotificationsRestoreHeldWithoutReplay(t *testing.T) {
 	}
 	defer archive.Close()
 	preview, err := Inspect(ctx, archive.Path)
-	if err != nil || preview.Manifest.Schema != 20 || preview.Manifest.Counts["call_notifications"] != 2 {
+	if err != nil || preview.Manifest.Schema != store.SchemaVersion || preview.Manifest.Counts["call_notifications"] != 2 {
 		t.Fatal("delayed ledger not backed up", preview.Manifest, err)
 	}
 	target := filepath.Join(t.TempDir(), "restored")

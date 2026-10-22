@@ -119,6 +119,11 @@ func TestVoicemailCapacityRetryIsPersistentAndProtected(t *testing.T) {
 	if err := s.observeVoicemailCapacity(context.Background(), now); err != nil {
 		t.Fatal(err)
 	}
+	rows, summary, err := s.Store.NotificationRecords(t.Context(), "pending", "system", "")
+	if err != nil || len(rows) != 1 || summary.Pending != 1 || summary.Retrying != 1 {
+		t.Fatal("capacity failure missing from feed", rows, summary, err)
+	}
+	firstID := rows[0].ID
 	restarted := New(s.Config, s.Store)
 	restarted.client = s.client
 	s = restarted
@@ -137,6 +142,10 @@ func TestVoicemailCapacityRetryIsPersistentAndProtected(t *testing.T) {
 	}
 	if pushes.Load() != 2 {
 		t.Fatal("retry was lost or sent twice")
+	}
+	rows, summary, err = s.Store.NotificationRecords(t.Context(), "sent", "system", "")
+	if err != nil || len(rows) != 1 || rows[0].ID != firstID || rows[0].Failures != 1 || summary.Pending != 0 || summary.Accepted != 1 {
+		t.Fatal("capacity retry split or missing result", rows, summary, err)
 	}
 	capacityFile(t, s, 288<<20)
 	if err := s.Store.HoldRestoredData(context.Background(), strings.Repeat("a", 64), now.Unix()); err != nil {

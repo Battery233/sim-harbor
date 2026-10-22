@@ -423,6 +423,7 @@ func (s *Server) Handler() http.Handler {
 		reply(w, 200, state)
 	})
 	mux.HandleFunc("POST /api/state/query", s.queryState)
+	mux.HandleFunc("GET /api/navigation-counts", s.navigationCounts)
 	s.outgoingRoutes(mux)
 	s.notificationRoutes(mux)
 	s.cardNotificationRoutes(mux)

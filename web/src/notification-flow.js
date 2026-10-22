@@ -9,7 +9,7 @@ export const notificationErrors = {
 }
 export function canRetryNotification(row, now) {
   return (
-    row.source !== 'call' &&
+    (!row.source || row.source === 'sms') &&
     row.state === 'pending' &&
     row.failures > 0 &&
     row.next_at > now &&

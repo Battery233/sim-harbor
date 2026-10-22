@@ -10,11 +10,12 @@ type UnlinkedVoicemail struct {
 	StartTS    int64  `json:"started_at"`
 	CreatedAt  int64  `json:"created_at"`
 	Size       int64  `json:"size"`
+	PlayedAt   int64  `json:"played_at"`
 	StoredName string `json:"-"`
 }
 
 func (s *Store) UnlinkedVoicemails(ctx context.Context, before int64) ([]UnlinkedVoicemail, error) {
-	rows, err := s.DB.QueryContext(ctx, `SELECT id,slot,phone,start_ts,created_at,size,stored_name FROM voicemails WHERE stored_name<>'' AND call_id IS NULL AND (?=0 OR id<?) ORDER BY id DESC LIMIT 51`, before, before)
+	rows, err := s.DB.QueryContext(ctx, `SELECT id,slot,phone,start_ts,created_at,size,stored_name,played_at FROM voicemails WHERE stored_name<>'' AND call_id IS NULL AND (?=0 OR id<?) ORDER BY id DESC LIMIT 51`, before, before)
 	if err != nil {
 		return nil, err
 	}
@@ -22,7 +23,7 @@ func (s *Store) UnlinkedVoicemails(ctx context.Context, before int64) ([]Unlinke
 	items := []UnlinkedVoicemail{}
 	for rows.Next() {
 		var item UnlinkedVoicemail
-		if err = rows.Scan(&item.ID, &item.Slot, &item.Phone, &item.StartTS, &item.CreatedAt, &item.Size, &item.StoredName); err != nil {
+		if err = rows.Scan(&item.ID, &item.Slot, &item.Phone, &item.StartTS, &item.CreatedAt, &item.Size, &item.StoredName, &item.PlayedAt); err != nil {
 			return nil, err
 		}
 		items = append(items, item)

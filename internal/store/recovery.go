@@ -7,7 +7,7 @@ import (
 	"encoding/hex"
 )
 
-const SchemaVersion = 20
+const SchemaVersion = 21
 const recoverySchema = `CREATE TABLE IF NOT EXISTS recovery_guard(id INTEGER PRIMARY KEY CHECK(id=1),restored_at INTEGER NOT NULL,archive_sha256 TEXT NOT NULL);
 DELETE FROM schema_version; INSERT INTO schema_version VALUES(5);`
 
@@ -43,7 +43,7 @@ func (s *Store) HoldRestoredData(ctx context.Context, archive string, now int64)
 	if _, e = tx.ExecContext(ctx, `UPDATE call_notifications SET state='restore_held',last_error='restored_notification_held' WHERE state='pending'`); e != nil {
 		return e
 	}
-	if _, e = tx.ExecContext(ctx, `UPDATE status_alert_jobs SET state='restore_held' WHERE state='pending'; UPDATE status_alert_monitors SET bad_since=0,good_since=0;`); e != nil {
+	if _, e = tx.ExecContext(ctx, `UPDATE system_notifications SET state='restore_held' WHERE state='pending'; UPDATE status_alert_jobs SET state='restore_held' WHERE state='pending'; UPDATE status_alert_monitors SET bad_since=0,good_since=0;`); e != nil {
 		return e
 	}
 	// Hold even starts whose deadlines have not expired yet. A later final

@@ -30,6 +30,7 @@ func run(args []string, out io.Writer) error {
 	confirm := flags.String("confirm-archive", "", "inspected archive SHA-256")
 	directory := flags.String("data-directory", "", "offline source directory")
 	output := flags.String("output", "", "new archive file")
+	includeRecordings := flags.Bool("include-recordings", false, "include saved AMR files")
 	if err := flags.Parse(args[1:]); err != nil || flags.NArg() != 0 {
 		return errors.New("维护参数无效，请查看数据维护手册。")
 	}
@@ -40,7 +41,7 @@ func run(args []string, out io.Writer) error {
 	case "restore":
 		allowed["backup"], allowed["to"], allowed["confirm-archive"] = true, true, true
 	case "backup":
-		allowed["data-directory"], allowed["output"] = true, true
+		allowed["data-directory"], allowed["output"], allowed["include-recordings"] = true, true, true
 	default:
 		return errors.New("维护操作无效：使用 inspect / backup / restore。")
 	}
@@ -53,7 +54,7 @@ func run(args []string, out io.Writer) error {
 	if invalid {
 		return errors.New("本操作包含不适用的参数。")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 	if args[0] == "restore" {
 		if *backup == "" || *target == "" || *confirm == "" {
@@ -69,7 +70,7 @@ func run(args []string, out io.Writer) error {
 		if *directory == "" || *output == "" {
 			return errors.New("停服备份需指定 -data-directory 和不存在的 -output 文件。")
 		}
-		if err := maintenance.BackupDirectory(ctx, *directory, *output); err != nil {
+		if err := maintenance.BackupDirectory(ctx, *directory, *output, *includeRecordings); err != nil {
 			return fmt.Errorf("停服备份未完成（%s）；正在运行时请使用网页备份。", problem(err))
 		}
 		return json.NewEncoder(out).Encode(map[string]bool{"backup_created": true})

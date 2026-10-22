@@ -21,7 +21,7 @@ func TestCardNameBackupRestoreAndLegacyMigration(t *testing.T) {
 			if err := s.Ingest(ctx, e, raw, true); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := s.DB.Exec(`DROP TABLE IF EXISTS voicemail_controls; DROP TABLE IF EXISTS voicemails`); err != nil {
+			if _, err := s.DB.Exec(`DROP TABLE IF EXISTS system_notifications; DROP TABLE IF EXISTS voicemail_controls; DROP TABLE IF EXISTS voicemails`); err != nil {
 				t.Fatal(err)
 			}
 			if version < 14 {

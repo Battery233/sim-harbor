@@ -22,6 +22,22 @@ type unlinkedVoicemailView struct {
 }
 
 func (s *Server) unlinkedVoicemailRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("POST /api/voicemails/{media}/played", func(w http.ResponseWriter, r *http.Request) {
+		var in struct{}
+		if !decodeAction(w, r, &in) {
+			return
+		}
+		at, err := s.Store.MarkVoicemailPlayed(r.Context(), r.PathValue("media"), time.Now().Unix())
+		if errors.Is(err, sql.ErrNoRows) {
+			reply(w, 404, map[string]string{"error": "voicemail_unavailable"})
+			return
+		}
+		if err != nil {
+			outgoingError(w, err)
+			return
+		}
+		reply(w, 200, map[string]int64{"played_at": at})
+	})
 	mux.HandleFunc("GET /api/voicemails/activity", func(w http.ResponseWriter, r *http.Request) {
 		items, err := s.Store.VoicemailActivity(r.Context(), s.Config.DeviceID)
 		if err != nil {

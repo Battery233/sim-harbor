@@ -177,3 +177,32 @@ test('旧列表响应不会覆盖新任务，异常文件列表不产生下载�
   assert.equal(await bad.flow.download({ ...file, id: '../sim.db' }), false)
   assert.equal(bad.saves.length, 0)
 })
+
+test('录音选项进入明确的生成请求；较大文件拒绝普通内存下载', async () => {
+  const f = fixture()
+  assert.equal(await f.flow.start('server', true, true), true)
+  assert.equal(f.calls[0][2].include_recordings, true)
+  const large = {
+    ...file,
+    bytes: 300 * 1024 * 1024,
+    include_recordings: true,
+    recording_files: 100,
+  }
+  const g = fixture()
+  assert.equal(await g.flow.download(large), false)
+  assert.match(g.state().error, /256 MiB/)
+  assert.equal(g.calls.length, 0)
+  let opened = false
+  const h = fixture({
+    selectFile: async () => ({
+      createWritable() {
+        opened = true
+        return {}
+      },
+    }),
+  })
+  assert.equal(await h.flow.download(large), true)
+  assert.equal(h.calls[0][3].max, (65536 + 544) * 1024 * 1024)
+  assert.equal(typeof h.calls[0][3].openSink, 'function')
+  assert.equal(opened, false) // File request owns opening the writer after validating headers.
+})

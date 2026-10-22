@@ -1,37 +1,31 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { createListeningHistory, recordingBadge } from './voicemail-listening.js'
-const a = 'a'.repeat(32),
-  b = 'b'.repeat(32)
-test('组内较早录音也显示标记；全部开始播放后才视为已播放', () => {
-  let value
-  const storage = {
-    getItem: () => value,
-    setItem: (_, data) => {
-      value = data
-    },
-  }
-  const history = createListeningHistory(storage)
-  assert.equal(recordingBadge([], history), '')
-  assert.equal(recordingBadge([a, b], history), '📼 未播放')
-  history.mark(a)
-  assert.equal(recordingBadge([a, b], history), '📼 未播放')
-  history.mark(b)
-  assert.equal(recordingBadge([a, b], history), '📼 已播放')
-  assert.equal(createListeningHistory(storage).has(a), true)
-  assert.equal(history.mark('not-a-media-id'), false)
-  assert.equal(value.includes('not-a-media-id'), false)
+import { recordingBadge, markRecordingPlayed } from './voicemail-listening.js'
+test('汇总按服务器未播放计数判断，不依赖浏览器本地存储', () => {
+  assert.equal(recordingBadge(0, 0), '')
+  assert.equal(recordingBadge(2, 1), '📼 未播放')
+  assert.equal(recordingBadge(2, 0), '📼 已播放')
 })
-test('浏览器禁用存储或损坏数据时仍能在当前页面记忆', () => {
-  const history = createListeningHistory({
-    getItem() {
-      throw new Error('disabled')
-    },
-    setItem() {
-      throw new Error('full')
-    },
-  })
-  assert.equal(history.mark(a), true)
-  assert.equal(history.has(a), true)
-  assert.equal(createListeningHistory({ getItem: () => '{}' }).has(a), false)
+test('只有成功开始播放后调用写入；失败不自动重试、不伪造成功', async () => {
+  const calls = []
+  const request = async (...args) => {
+    calls.push(args)
+    return { played_at: 1234 }
+  }
+  assert.equal(await markRecordingPlayed(request, 'a'.repeat(32)), 1234)
+  assert.deepEqual(calls, [['/voicemails/' + 'a'.repeat(32) + '/played', 'POST', {}]])
+  await assert.rejects(markRecordingPlayed(request, 'bad'), /编号/)
+  let attempted = 0
+  await assert.rejects(
+    markRecordingPlayed(async () => {
+      attempted++
+      throw new Error('offline')
+    }, 'b'.repeat(32)),
+    /offline/,
+  )
+  assert.equal(attempted, 1)
+  await assert.rejects(
+    markRecordingPlayed(async () => ({ played_at: 0 }), 'a'.repeat(32)),
+    /未能确认/,
+  )
 })

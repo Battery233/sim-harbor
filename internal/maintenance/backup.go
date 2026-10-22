@@ -18,20 +18,34 @@ import (
 	"github.com/Battery233/sim-harbor/internal/store"
 )
 
-const MaxArchive int64 = store.BackupBytes + (32 << 20)
-const manifestLimit int64 = 16 << 10
+const DatabaseArchiveLimit int64 = store.BackupBytes + (32 << 20)
+const MaxArchive int64 = DatabaseArchiveLimit + store.RecordingBackupBytes
+const manifestLimit int64 = 4 << 20
 
 var ErrInvalidBackup = errors.New("invalid_backup")
 var ErrSchema = errors.New("unsupported_backup_schema")
 
+type RecordingManifest struct {
+	Name   string `json:"name"`
+	Bytes  int64  `json:"bytes"`
+	SHA256 string `json:"sha256"`
+}
+
+type BackupOptions struct {
+	IncludeRecordings bool
+	DataDirectory     string
+}
+
 type Manifest struct {
-	Format      int              `json:"format_version"`
-	Application string           `json:"application"`
-	CreatedAt   string           `json:"created_at"`
-	Schema      int              `json:"schema_version"`
-	Bytes       int64            `json:"database_bytes"`
-	SHA256      string           `json:"database_sha256"`
-	Counts      map[string]int64 `json:"counts"`
+	Format             int                 `json:"format_version"`
+	Application        string              `json:"application"`
+	CreatedAt          string              `json:"created_at"`
+	Schema             int                 `json:"schema_version"`
+	Bytes              int64               `json:"database_bytes"`
+	SHA256             string              `json:"database_sha256"`
+	Counts             map[string]int64    `json:"counts"`
+	IncludesRecordings bool                `json:"includes_recordings,omitempty"`
+	Recordings         []RecordingManifest `json:"recordings,omitempty"`
 }
 type Artifact struct {
 	Path     string
@@ -42,7 +56,11 @@ type Artifact struct {
 
 func (a *Artifact) Close() error { return os.RemoveAll(a.root) }
 
-func Create(ctx context.Context, s *store.Store, parent string) (*Artifact, error) {
+func Create(ctx context.Context, s *store.Store, parent string, options ...BackupOptions) (*Artifact, error) {
+	var opt BackupOptions
+	if len(options) > 0 {
+		opt = options[0]
+	}
 	root, err := os.MkdirTemp(parent, ".sim-backup-")
 	if err != nil {
 		return nil, err
@@ -55,7 +73,16 @@ func Create(ctx context.Context, s *store.Store, parent string) (*Artifact, erro
 		}
 	}()
 	database := filepath.Join(root, "sim.db")
-	if err = s.SnapshotTo(ctx, database); err != nil {
+	var recordings []store.RecordingSnapshot
+	if opt.IncludeRecordings {
+		if opt.DataDirectory == "" {
+			return nil, store.ErrRecordingBackup
+		}
+		recordings, err = s.SnapshotWithRecordings(ctx, database, opt.DataDirectory, filepath.Join(root, "voicemail"))
+	} else {
+		err = s.SnapshotTo(ctx, database)
+	}
+	if err != nil {
 		return nil, err
 	}
 	m, err := databaseInfo(ctx, database)
@@ -63,9 +90,28 @@ func Create(ctx context.Context, s *store.Store, parent string) (*Artifact, erro
 		return nil, err
 	}
 	m.Format = 1
+	if opt.IncludeRecordings {
+		m.Format = 2
+		m.IncludesRecordings = true
+		m.Recordings = []RecordingManifest{}
+		for _, recording := range recordings {
+			path := filepath.Join(root, "voicemail", recording.Name)
+			size, digest, e := recordingDigest(ctx, path)
+			if e != nil {
+				if ctx.Err() != nil {
+					return nil, ctx.Err()
+				}
+				return nil, store.ErrRecordingBackup
+			}
+			if size != recording.Size || (recording.SHA256 != "" && digest != recording.SHA256) {
+				return nil, store.ErrRecordingBackup
+			}
+			m.Recordings = append(m.Recordings, RecordingManifest{Name: recording.Name, Bytes: size, SHA256: digest})
+		}
+	}
 	m.Application = "sim"
 	m.CreatedAt = time.Now().UTC().Format(time.RFC3339)
-	m.Bytes, m.SHA256, err = fileDigest(database)
+	m.Bytes, m.SHA256, err = fileDigestContext(ctx, database)
 	if err != nil {
 		return nil, err
 	}
@@ -82,18 +128,15 @@ func Create(ctx context.Context, s *store.Store, parent string) (*Artifact, erro
 		err = json.NewEncoder(w).Encode(m)
 	}
 	if err == nil {
-		header = &zip.FileHeader{Name: "sim.db", Method: zip.Store}
-		header.SetMode(0600)
-		w, err = z.CreateHeader(header)
-		if err == nil {
-			var source *os.File
-			source, err = os.Open(database)
-			if err == nil {
-				_, err = io.Copy(w, source)
-				source.Close()
-			}
-		}
+		err = writeArchiveFile(ctx, z, "sim.db", database, m.Bytes, m.SHA256)
 	}
+	for _, r := range m.Recordings {
+		if err != nil {
+			break
+		}
+		err = writeArchiveFile(ctx, z, "voicemail/"+r.Name, filepath.Join(root, "voicemail", r.Name), r.Bytes, r.SHA256)
+	}
+
 	ze := z.Close()
 	if err == nil {
 		err = ze
@@ -108,11 +151,11 @@ func Create(ctx context.Context, s *store.Store, parent string) (*Artifact, erro
 	if err != nil {
 		return nil, err
 	}
-	size, digest, err := fileDigest(a.Path)
+	size, digest, err := fileDigestContext(ctx, a.Path)
 	if err != nil {
 		return nil, err
 	}
-	if size > MaxArchive {
+	if size > MaxArchive || (m.Format == 1 && size > DatabaseArchiveLimit) {
 		return nil, store.ErrBackupLimit
 	}
 	if err = ctx.Err(); err != nil {
@@ -124,13 +167,16 @@ func Create(ctx context.Context, s *store.Store, parent string) (*Artifact, erro
 }
 
 func fileDigest(path string) (int64, string, error) {
+	return fileDigestContext(context.Background(), path)
+}
+func fileDigestContext(ctx context.Context, path string) (int64, string, error) {
 	f, e := os.Open(path)
 	if e != nil {
 		return 0, "", e
 	}
 	defer f.Close()
 	h := sha256.New()
-	n, e := io.Copy(h, f)
+	n, e := io.Copy(h, &contextReader{ctx: ctx, reader: f})
 	return n, hex.EncodeToString(h.Sum(nil)), e
 }
 
@@ -179,6 +225,9 @@ func databaseInfo(ctx context.Context, path string) (Manifest, error) {
 	}
 	if m.Schema >= 5 {
 		tables = append(tables, "recovery_guard")
+	}
+	if m.Schema >= 21 {
+		tables = append(tables, "system_notifications")
 	}
 	allowed := map[string]bool{}
 	for _, name := range tables {
@@ -268,6 +317,20 @@ func databaseInfo(ctx context.Context, path string) (Manifest, error) {
 			}
 			r.Close()
 		}
+	}
+	if m.Schema >= 21 {
+		for _, query := range []string{`SELECT created_at FROM status_alert_jobs LIMIT 0`, `SELECT id,kind,state,attempts,next_at,last_error,created_at,accepted_at,used_bytes,limit_bytes,target_bytes FROM system_notifications LIMIT 0`} {
+			rows, e := db.QueryContext(ctx, query)
+			if e != nil {
+				return m, ErrInvalidBackup
+			}
+			rows.Close()
+		}
+		r, err := db.QueryContext(ctx, `SELECT played_at FROM voicemails LIMIT 0`)
+		if err != nil {
+			return m, ErrInvalidBackup
+		}
+		r.Close()
 	}
 	if m.Schema >= 20 {
 		for _, q := range []string{`SELECT voicemail_due_at FROM calls LIMIT 0`, `SELECT phase,created_at FROM call_notifications LIMIT 0`} {
@@ -397,13 +460,16 @@ func load(ctx context.Context, path string) (*validated, error) {
 	if e != nil || !info.Mode().IsRegular() || info.Size() > MaxArchive {
 		return nil, ErrInvalidBackup
 	}
+	if e = requireSpace(root, info.Size()+(32<<20)); e != nil {
+		return nil, e
+	}
 	copyPath := filepath.Join(root, "input.zip")
 	copyFile, e := os.OpenFile(copyPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	if e != nil {
 		return nil, e
 	}
 	h := sha256.New()
-	n, e := io.Copy(io.MultiWriter(copyFile, h), io.LimitReader(source, MaxArchive+1))
+	n, e := io.Copy(io.MultiWriter(copyFile, h), &contextReader{ctx: ctx, reader: io.LimitReader(source, MaxArchive+1)})
 	ce := copyFile.Close()
 	if e != nil {
 		return nil, e
@@ -415,26 +481,52 @@ func load(ctx context.Context, path string) (*validated, error) {
 		return nil, ErrInvalidBackup
 	}
 	v.preview.ArchiveSHA256 = hex.EncodeToString(h.Sum(nil))
+	if e = checkZIPDirectory(copyPath, n); e != nil {
+		return nil, e
+	}
 	z, e := zip.OpenReader(copyPath)
 	if e != nil {
 		return nil, ErrInvalidBackup
 	}
 	defer z.Close()
-	if len(z.File) != 2 {
+	if len(z.File) < 2 || len(z.File) > store.RecordingBackupFiles+2 {
 		return nil, ErrInvalidBackup
+	}
+	var unpacked uint64
+	for _, f := range z.File {
+		limit := uint64(store.RecordingFileBytes)
+		if f.Name == "sim.db" {
+			limit = uint64(store.BackupBytes)
+		} else if f.Name == "manifest.json" {
+			limit = uint64(manifestLimit)
+		} else if !recordingArchiveName(f.Name) {
+			return nil, ErrInvalidBackup
+		}
+		if f.UncompressedSize64 > limit {
+			return nil, ErrInvalidBackup
+		}
+		unpacked += f.UncompressedSize64
+		if unpacked > uint64(MaxArchive) {
+			return nil, ErrInvalidBackup
+		}
+	}
+	if e = requireSpace(root, int64(unpacked)+(32<<20)); e != nil {
+		return nil, e
 	}
 	seen := map[string]bool{}
 	for _, f := range z.File {
 		if e = ctx.Err(); e != nil {
 			return nil, e
 		}
-		if seen[f.Name] || !f.Mode().IsRegular() || (f.Name != "manifest.json" && f.Name != "sim.db") {
+		if seen[f.Name] || !f.Mode().IsRegular() || (f.Name != "manifest.json" && f.Name != "sim.db" && !recordingArchiveName(f.Name)) {
 			return nil, ErrInvalidBackup
 		}
 		seen[f.Name] = true
 		limit := store.BackupBytes
 		if f.Name == "manifest.json" {
 			limit = manifestLimit
+		} else if recordingArchiveName(f.Name) {
+			limit = store.RecordingFileBytes
 		}
 		if f.UncompressedSize64 > uint64(limit) {
 			return nil, ErrInvalidBackup
@@ -455,12 +547,20 @@ func load(ctx context.Context, path string) (*validated, error) {
 				return nil, ErrInvalidBackup
 			}
 		} else {
-			out, e := os.OpenFile(v.database, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+			destination := v.database
+			if recordingArchiveName(f.Name) {
+				destination = filepath.Join(v.root, filepath.FromSlash(f.Name))
+				if e = os.MkdirAll(filepath.Dir(destination), 0700); e != nil {
+					reader.Close()
+					return nil, e
+				}
+			}
+			out, e := os.OpenFile(destination, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 			if e != nil {
 				reader.Close()
 				return nil, e
 			}
-			n, e = io.Copy(out, io.LimitReader(reader, limit+1))
+			n, e = io.Copy(out, &contextReader{ctx: ctx, reader: io.LimitReader(reader, limit+1)})
 			ce = out.Close()
 			reader.Close()
 			if e != nil || ce != nil || n != int64(f.UncompressedSize64) {
@@ -469,13 +569,13 @@ func load(ctx context.Context, path string) (*validated, error) {
 		}
 	}
 	m := v.preview.Manifest
-	if !seen["sim.db"] || !seen["manifest.json"] || m.Format != 1 || m.Application != "sim" || m.Bytes <= 0 || m.Bytes > store.BackupBytes || len(m.SHA256) != 64 {
+	if !seen["sim.db"] || !seen["manifest.json"] || (m.Format != 1 && m.Format != 2) || m.Application != "sim" || m.Bytes <= 0 || m.Bytes > store.BackupBytes || len(m.SHA256) != 64 {
 		return nil, ErrInvalidBackup
 	}
 	if _, e = time.Parse(time.RFC3339, m.CreatedAt); e != nil {
 		return nil, ErrInvalidBackup
 	}
-	size, digest, e := fileDigest(v.database)
+	size, digest, e := fileDigestContext(ctx, v.database)
 	if e != nil {
 		return nil, e
 	}
@@ -493,6 +593,9 @@ func load(ctx context.Context, path string) (*validated, error) {
 		if declared, found := m.Counts[table]; !found || declared != n {
 			return nil, ErrInvalidBackup
 		}
+	}
+	if e = validateRecordingArchive(ctx, v, z.File); e != nil {
+		return nil, e
 	}
 	success = true
 	return v, nil

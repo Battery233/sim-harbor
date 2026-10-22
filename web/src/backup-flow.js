@@ -1,3 +1,4 @@
+import { maxBackupArchive, maxBrowserBuffer } from './backup-limits.js'
 import { backupErrors } from './backup-errors.js'
 
 export function backupName(now = new Date(), id = 'backup') {
@@ -26,7 +27,7 @@ function validBackupFile(file) {
     /^sim-backup-\d{8}T\d{6}Z-[a-f0-9]{32}\.zip$/.test(file.name) &&
     Number.isSafeInteger(file.bytes) &&
     file.bytes > 0 &&
-    file.bytes <= 544 * 1024 * 1024 &&
+    file.bytes <= maxBackupArchive &&
     Number.isSafeInteger(file.created_at) &&
     file.created_at > 0 &&
     /^[a-f0-9]{64}$/.test(file.sha256) &&
@@ -81,9 +82,14 @@ export function createBackupFlow({
     try {
       const target = selectedHandle === undefined ? await selectFile(file.name) : selectedHandle
       if (stopped) return false
+      if (!target && file.bytes > maxBrowserBuffer)
+        throw new Error(
+          '文件超过 256 MiB，请使用支持直接写入文件的浏览器（如新版 Chrome/Edge）下载，避免占满浏览器内存。',
+        )
       controller = new AbortController()
       const blob = await fileRequest(`/backups/${file.id}/download`, 'GET', undefined, {
         signal: controller.signal,
+        max: maxBackupArchive,
         timeout: 10 * 60 * 1000,
         openSink: target ? () => target.createWritable() : undefined,
       })
@@ -165,7 +171,7 @@ export function createBackupFlow({
   return {
     load,
     download,
-    async start(destination, confirmed) {
+    async start(destination, confirmed, includeRecordings = false) {
       if (
         stopped ||
         !confirmed ||
@@ -183,7 +189,12 @@ export function createBackupFlow({
         handle = destination === 'browser' ? await selectFile(backupName(new Date(), id)) : null
         if (stopped) return false
         watchID = id
-        const job = await request('/backups', 'POST', { confirmed: true, id, destination })
+        const job = await request('/backups', 'POST', {
+          confirmed: true,
+          id,
+          destination,
+          include_recordings: includeRecordings === true,
+        })
         if (stopped) return false
         if (job.id !== id || !['running', 'ready', 'failed'].includes(job.state))
           throw new Error('备份请求结果未确认，请刷新任务状态。')

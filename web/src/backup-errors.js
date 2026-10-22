@@ -1,6 +1,8 @@
 export const backupErrors = {
+  recording_backup_incomplete:
+    '录音文件缺失、损坏或不可读取，含录音备份未完成；已有备份保留。请核对录音目录。',
   backup_in_progress: '另一份备份或迁移确认正在处理，请稍后刷新。',
-  backup_limit_exceeded: '数据库超过 512 MiB 备份上限。',
+  backup_limit_exceeded: '超过备份保护上限（数据库 512 MiB、录音 65536 MiB、目录最多 10000 项）。',
   backup_confirmation_required: '请选择保存方式，并确认妥善保管私人数据备份。',
   backup_delete_confirmation_required: '请先确认删除这份服务器备份。',
   backup_request_conflict: '备份请求已存在，请刷新查看原任务。',

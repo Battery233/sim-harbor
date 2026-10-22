@@ -94,3 +94,38 @@ test('旧请求失败或离开页面后不显示过时错误', async () => {
   reject(new Error('expired'))
   assert.equal(await pending, false)
 })
+
+test('系统推送与全部类型筛选支持独立编号，不产生短信详情或重试入口', async () => {
+  const status = {
+    ...row('call'),
+    source: 'system',
+    key: 'status:1',
+    kind: 'status_fault',
+    system_key: 'board',
+    slot: 0,
+    call_id: undefined,
+    message_id: undefined,
+  }
+  const capacity = {
+    ...status,
+    key: 'capacity:1',
+    kind: 'voicemail_capacity',
+    system_key: 'voicemail',
+    used_bytes: 256,
+    limit_bytes: 512,
+  }
+  let view
+  const flow = createNotificationRecords({
+    request: async () => page([status, capacity, row('sms')]),
+    changed: (v) => (view = v),
+  })
+  await flow.load({ source: 'everything' })
+  assert.equal(view.items.length, 3)
+  assert.equal(notificationRecordLink(status), '')
+  assert.equal(notificationRecordLink(capacity), '')
+  assert.equal(canRetryNotification(capacity, 100), false)
+  assert.match(notificationKinds.status_recovery, /恢复/)
+  const system = createNotificationRecords({ request: async () => page([status, capacity]) })
+  assert.equal(await system.load({ source: 'system' }), true)
+  await assert.rejects(system.load({ source: 'all' }), /筛选/)
+})

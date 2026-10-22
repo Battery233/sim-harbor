@@ -32,7 +32,7 @@ func TestNotificationSuccessBackupRestoreAndOldVersionDates(t *testing.T) {
 			e.SMSTS++
 			raw, _ = json.Marshal(e)
 			s.Ingest(ctx, e, raw, true)
-			if _, err := s.DB.Exec(`DROP TABLE IF EXISTS voicemail_controls; DROP TABLE IF EXISTS voicemails`); err != nil {
+			if _, err := s.DB.Exec(`DROP TABLE IF EXISTS system_notifications; DROP TABLE IF EXISTS voicemail_controls; DROP TABLE IF EXISTS voicemails`); err != nil {
 				t.Fatal(err)
 			}
 			if version < 14 {

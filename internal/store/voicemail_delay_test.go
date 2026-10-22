@@ -247,7 +247,7 @@ func TestSchemaTwentyPreservesOldJobsAndDoesNotArmHistoricalCalls(t *testing.T) 
 		t.Fatal(state, attempts, accepted, err)
 	}
 	s.DB.QueryRow(`SELECT version FROM schema_version`).Scan(&version)
-	if version != 20 {
+	if version != SchemaVersion {
 		t.Fatal(version)
 	}
 	if err := s.QueueVoicemailTimeouts(ctx, 2000000000, 1); err != nil || notificationCount(t, s, 0) != 1 {
