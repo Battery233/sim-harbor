@@ -177,11 +177,11 @@ test('短信通道分别接受来电方式和提示音，TCP 仍要求完整读�
   assert.equal(applied.voicemail.slots[0].tts, null)
   assert.equal(
     voicemailSlotEvidence(partial.slots[0], 'sms'),
-    '卡槽 1：接听并录音 · 板子提示语尚未确认',
+    '卡槽 1：接听并录音 · 预设提示语需后台核对',
   )
   assert.equal(
     voicemailSlotEvidence(known[1].slots[0], 'sms'),
-    '卡槽 1：接听方式尚未确认 · 板子上有已保存的提示语',
+    '卡槽 1：接听方式需后台核对 · 板子上有已保存的提示语',
   )
   assert.match(voicemailApplyNote('restore', applied), /尚未确认停止自动接听/)
   assert.match(voicemailApplyNote('restore', applied), /卡槽 1：接听方式已确认，板子提示语待确认/)
@@ -444,5 +444,12 @@ test('公网模式可预览启用，局域网接收条件不满足时禁止启�
   assert.equal(
     voicemailPlan('restore', observed, { ...running, receiving_ready: false }).ready,
     true,
+  )
+})
+
+test('固件无法读回时显示简短后台核对提示，不暗示功能失败', () => {
+  assert.equal(
+    voicemailSlotEvidence({ slot: 2, mode: null, tts: null }, 'sms'),
+    '卡槽 2：需在板子后台核对',
   )
 })

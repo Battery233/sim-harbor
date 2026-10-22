@@ -32,6 +32,7 @@ type Config struct {
 	HTTPAddr               string         `json:"http_address"`
 	TCPAddr                string         `json:"tcp_address"`
 	DataDir                string         `json:"data_directory"`
+	BackupMaxStorageMiB    int64          `json:"backup_max_storage_mib,omitempty"`
 	DeviceID               string         `json:"device_id"`
 	DeviceCIDRs            []string       `json:"device_cidrs"`
 	DeviceAllowlistEnabled *bool          `json:"device_allowlist_enabled,omitempty"`
@@ -112,6 +113,9 @@ func loopback(address string) bool {
 }
 
 func (c *Config) Validate() error {
+	if c.BackupMaxStorageMiB != 0 && (c.BackupMaxStorageMiB < 544 || c.BackupMaxStorageMiB > 65536) {
+		return errors.New("invalid backup storage limit")
+	}
 	if _, err := NormalizeAdminTokenHeader(c.AdminTokenHeader); err != nil {
 		return err
 	}

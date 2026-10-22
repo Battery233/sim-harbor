@@ -116,8 +116,8 @@ function describe(row) {
     sms_result_persistence_failed: '请核对原操作，应用不会因此补发短信。',
     sms_report_received: '提交与送达是不同阶段，最终结果请看发件箱。',
     notification_accepted: '请在 iPhone 上确认是否收到。',
-    notification_failed: diagnosticOutcomes[row.outcome] || '请查看通知诊断中的任务结果。',
-    notification_persistence_failed: '后续重试可能重复通知，请查看通知诊断。',
+    notification_failed: diagnosticOutcomes[row.outcome] || '请查看“短信与通话推送”中的任务结果。',
+    notification_persistence_failed: '后续重试可能重复通知，请查看“短信与通话推送”。',
   }
   return {
     title: Object.hasOwn(titles, row.code) ? titles[row.code] : row.message,

@@ -16,6 +16,7 @@ import Notifications from './Notifications.vue'
 import Diagnostics from './Diagnostics.vue'
 import DataTools from './DataTools.vue'
 import { createFileRequest } from './download.js'
+import { backupErrors } from './backup-errors.js'
 import { createRequest } from './request.js'
 import { createAccessSession } from './access-session.js'
 import { createAuthHeaders } from './auth-config.js'
@@ -51,6 +52,7 @@ let credential = access.read(),
   queryRevision = 0,
   stopped = false
 const errors = {
+  ...backupErrors,
   ...settingsErrors,
   invalid_board_action: '不支持此操作，或心跳值超过安全范围；请先核对参数。',
   voicemail_disabled: '应用接收服务尚未开启。请在“录音配置”保存设置并重启应用。',
@@ -62,6 +64,10 @@ const errors = {
   card_number_mismatch: '填写的号码和这块卡当前的本机号码不一致，已阻止发送。',
   voicemail_sms_rejected:
     '板子没有接受短信指令。请核对用户密码；密码错误时 30 分钟内可能不再回复。上传地址可能已经写入，请重新读取后再确认。',
+  voicemail_delete_failed: '录音删除未完成，请刷新列表核对，不会自动重试。',
+  voicemail_cleanup_pending:
+    '删除已登记，但文件清理未完成。请查看运行诊断；下次启动会重试已登记的清理。',
+  voicemail_delete_confirmation_required: '请先确认要删除的这段录音。',
   voicemail_source_rejected: '留言上传来源不在设备允许范围内。',
   voicemail_upload_rejected: '留言上传未通过校验。',
   board_parameter_changed: '板子的当前值已变化，请重新查询后再确认。',
@@ -75,7 +81,7 @@ const errors = {
   outbound_disabled: '外发尚未启用。完成真机与资费确认后再开启。',
   outbound_restore_blocked: '恢复保护尚未解除，请到数据维护完成迁移确认。',
   migration_consent_required: '请逐项核对迁移条件并确认。',
-  migration_backup_required: '请先重新下载当前数据库备份，再于15分钟内预览。',
+  migration_backup_required: '请先保存到服务器或下载当前数据库备份，再于15分钟内预览。',
   migration_state_changed: '迁移或发送历史已变化，请读取状态并重新备份、预览。',
   migration_preview_expired: '预览已过期或失效，请读取状态后重新预览。',
   migration_in_progress: '备份或迁移确认正在处理，请稍后读取状态。',
@@ -528,7 +534,7 @@ onUnmounted(() => {
           <button :class="{ primary: tab === 'outbox' }" @click="tab = 'outbox'">发件箱</button>
           <button :class="{ primary: tab === 'calls' }" @click="viewCardCalls()">来电记录</button>
           <button :class="{ primary: tab === 'notifications' }" @click="tab = 'notifications'">
-            通知诊断
+            短信与通话推送
           </button>
           <button :class="{ primary: tab === 'diagnostics' }" @click="tab = 'diagnostics'">
             运行诊断

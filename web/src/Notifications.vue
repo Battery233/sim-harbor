@@ -1,5 +1,11 @@
 <script setup>
 import InfoTip from './InfoTip.vue'
+import {
+  createNotificationRecords,
+  notificationKinds,
+  notificationRecordLink,
+  notificationCanceledReason,
+} from './notification-records.js'
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import {
   createNotificationActions,
@@ -9,8 +15,9 @@ import {
 const props = defineProps({ request: Function })
 const data = ref(null),
   rows = ref([]),
-  filter = ref('pending'),
-  next = ref(0),
+  filter = ref('all'),
+  source = ref('all'),
+  next = ref(''),
   busy = ref(false),
   error = ref(''),
   note = ref('')
@@ -34,16 +41,16 @@ function date(ts) {
 function reason(code) {
   return notificationErrors[code] || '等待尝试'
 }
+const records = createNotificationRecords({
+  request: (...args) => props.request(...args),
+  changed(view) {
+    data.value = view
+    rows.value = view.items
+    next.value = view.next_before
+  },
+})
 async function load(more = false) {
-  const query = new URLSearchParams({ state: filter.value })
-  if (more) query.set('before', next.value)
-  const result = await props.request('/notifications?' + query)
-  if (stopped) return
-  if (!Array.isArray(result.items) || !result.summary)
-    throw new Error('无法读取通知记录，请稍后刷新。')
-  data.value = result
-  rows.value = more ? [...rows.value, ...result.items] : result.items
-  next.value = result.next_before
+  await records.load({ state: filter.value, source: source.value }, more)
 }
 async function refresh(more = false) {
   if (busy.value || stopped) return
@@ -101,6 +108,7 @@ onMounted(async () => {
 onUnmounted(() => {
   stopped = true
   clearInterval(clock)
+  records.dispose()
 })
 </script>
 <template>
@@ -112,8 +120,8 @@ onUnmounted(() => {
         <div>
           <p class="eyebrow">NOTIFICATIONS</p>
           <h2>
-            通知诊断
-            <InfoTip label="通知诊断说明"
+            短信与通话推送
+            <InfoTip label="短信与通话推送说明"
               >通知失败不会丢失短信。Bark 接受请求后，仍需在 iPhone 核对；重复尝试可能重复通知。<br />凭据可在系统配置中修改，保存后另行确认重启应用生效；旧密钥不回显。启用不会补推过去的短信。</InfoTip
             >
           </h2>
@@ -121,7 +129,10 @@ onUnmounted(() => {
         <span class="badge">{{ data?.enabled ? '已配置' : '未启用' }}</span>
       </div>
 
-      <p class="muted tiny">这里的任务和汇总为短信通知；未接来电提醒状态请查看“来电记录”。</p>
+      <p class="muted tiny">
+        这里仅展示短信与通话的 Bark
+        推送记录，包括未接来电、留言、录音未到和迟到录音。不含运行异常与容量提醒。
+      </p>
       <dl class="notification-config">
         <div>
           <dt>推送服务</dt>
@@ -134,14 +145,14 @@ onUnmounted(() => {
       </dl>
 
       <div class="notification-summary">
-        <span>待推送 {{ data?.summary.pending || 0 }}</span
-        ><span>失败待重试 {{ data?.summary.retrying || 0 }}</span
-        ><span>推送成功 {{ data?.summary.accepted || 0 }}</span>
+        <span>待推送 {{ data?.summary?.pending || 0 }}</span
+        ><span>失败待重试 {{ data?.summary?.retrying || 0 }}</span
+        ><span>推送成功 {{ data?.summary?.accepted || 0 }}</span>
       </div>
       <div class="notification-test">
         <p class="tiny">
-          最近连接测试 · {{ date(data?.summary.test_at) }}<br />{{
-            data?.summary.test_at ? reason(data.summary.test_outcome) : '尚未发出测试'
+          最近连接测试 · {{ date(data?.summary?.test_at) }}<br />{{
+            data?.summary?.test_at ? reason(data.summary.test_outcome) : '尚未发出测试'
           }}
         </p>
         <label class="consent"
@@ -156,23 +167,32 @@ onUnmounted(() => {
     </section>
     <section class="panel compose">
       <div class="detail-head">
-        <h2>通知任务</h2>
+        <h2>推送记录</h2>
         <button :disabled="busy" @click="refresh(false)">刷新记录</button>
       </div>
-      <label class="notification-filter"
-        >查看<select v-model="filter" :disabled="busy" @change="refresh(false)">
-          <option value="pending">待推送</option>
-          <option value="sent">推送成功</option>
-          <option value="restore_held">恢复后暂停</option>
-          <option value="canceled">短信删除后取消</option>
-          <option value="all">全部记录</option>
-        </select></label
-      >
+      <div class="notification-filters">
+        <label class="notification-filter"
+          >类型<select v-model="source" :disabled="busy" @change="refresh(false)">
+            <option value="all">短信与通话</option>
+            <option value="sms">仅短信</option>
+            <option value="call">仅通话</option>
+          </select></label
+        >
+        <label class="notification-filter"
+          >查看<select v-model="filter" :disabled="busy" @change="refresh(false)">
+            <option value="all">全部记录</option>
+            <option value="pending">待推送</option>
+            <option value="sent">推送成功</option>
+            <option value="restore_held">恢复后暂停</option>
+            <option value="canceled">已取消</option>
+          </select></label
+        >
+      </div>
       <p v-if="!rows.length" class="empty muted">{{ busy ? '正在读取…' : '当前没有通知任务' }}</p>
       <ul class="notification-list">
-        <li v-for="row in rows" :key="row.id">
+        <li v-for="row in rows" :key="row.key">
           <div class="result-line">
-            <strong>卡槽 {{ row.slot }} · 通知 #{{ row.id }}</strong
+            <strong>{{ notificationKinds[row.kind] }} · 卡槽 {{ row.slot }}</strong
             ><span class="badge">{{
               row.state === 'canceled'
                 ? '已取消'
@@ -190,9 +210,9 @@ onUnmounted(() => {
             <template v-if="row.failures && row.state !== 'sent'"> · </template>
             {{
               row.state === 'canceled'
-                ? '原短信已删除，不再推送'
+                ? notificationCanceledReason(row)
                 : row.state === 'restore_held'
-                  ? '旧任务不自动重推；原短信仍保留'
+                  ? '恢复后的旧任务暂停，不自动补推'
                   : row.state === 'sent'
                     ? ''
                     : reason(row.last_error)
@@ -200,9 +220,15 @@ onUnmounted(() => {
               row.next_at > now ? '下次尝试 ' + date(row.next_at) : '已进入可尝试队列'
             }}</template>
           </p>
+          <p class="tiny muted">
+            记录时间 {{ date(row.recorded_at)
+            }}<span v-if="row.accepted_at"> · Bark 接受于 {{ date(row.accepted_at) }}</span>
+          </p>
           <div class="outgoing-actions">
             <span v-if="row.message_deleted" class="tiny muted">原短信已删除</span>
-            <a :href="'?message=' + row.message_id">查看原短信</a
+            <a :href="notificationRecordLink(row)">{{
+              row.source === 'call' ? '查看来电记录' : '查看原短信'
+            }}</a
             ><button
               v-if="data?.enabled && canRetryNotification(row, now)"
               :disabled="busy"

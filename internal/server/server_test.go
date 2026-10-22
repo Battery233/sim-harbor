@@ -40,6 +40,7 @@ func fixture(t *testing.T, mode int, options ...func(*config.Config)) (*Server, 
 	go func() { done <- s.ServeTCP(ctx, l) }()
 	t.Cleanup(func() {
 		cancel()
+		s.CloseBackups()
 		select {
 		case e := <-done:
 			if e != nil {

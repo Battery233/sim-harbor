@@ -154,3 +154,36 @@ func TestAllExampleConfigsValidateWithSyntheticSecretsAndOutboundOff(t *testing.
 		}
 	}
 }
+
+func TestBackupStorageCompatibilityAndLimits(t *testing.T) {
+	for _, limit := range []int64{0, 544, 2048, 65536} {
+		c := valid()
+		c.BackupMaxStorageMiB = limit
+		if err := c.Validate(); err != nil {
+			t.Fatal(limit, err)
+		}
+	}
+	for _, limit := range []int64{-1, 1, 543, 65537} {
+		c := valid()
+		c.BackupMaxStorageMiB = limit
+		if c.Validate() == nil {
+			t.Fatal("invalid backup quota accepted", limit)
+		}
+	}
+	c, settings := managedFixture(t)
+	snapshot, err := settings.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot.Values.BackupMaxStorageMiB = 4096
+	if _, err = settings.Save(snapshot.Values, SecretChanges{}, snapshot.Revision); err != nil {
+		t.Fatal(err)
+	}
+	if settings.Active().BackupMaxStorageMiB != 0 {
+		t.Fatal("quota changed without restart")
+	}
+	reloaded, err := Load(filepath.Join(c.DataDir, "system.private.json"))
+	if err != nil || reloaded.BackupMaxStorageMiB != 4096 {
+		t.Fatal("quota not persisted", err)
+	}
+}

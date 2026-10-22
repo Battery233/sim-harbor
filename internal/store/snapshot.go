@@ -11,7 +11,7 @@ import (
 	"modernc.org/sqlite"
 )
 
-const BackupBytes int64 = 256 << 20
+const BackupBytes int64 = 512 << 20
 
 var ErrBackupLimit = errors.New("backup_limit_exceeded")
 

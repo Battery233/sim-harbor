@@ -9,10 +9,11 @@ import (
 // ID is the first call in a group, so another call/slot/name cannot change it.
 // Unknown identities and withheld numbers never identify a shared caller.
 type CallGroup struct {
-	ID          int64 `json:"id"`
-	Latest      Call  `json:"latest"`
-	Count       int64 `json:"count"`
-	MissedCount int64 `json:"missed_count"`
+	ID                int64    `json:"id"`
+	Latest            Call     `json:"latest"`
+	Count             int64    `json:"count"`
+	MissedCount       int64    `json:"missed_count"`
+	VoicemailMediaIDs []string `json:"voicemail_media_ids,omitempty"`
 }
 
 const callGroupScope = ` (?=0 OR c.id=? OR EXISTS(SELECT 1 FROM calls a WHERE a.id=? AND a.card_id IS NOT NULL AND trim(a.phone)<>'' AND lower(a.phone)<>'anonymous' AND c.card_id=a.card_id AND c.phone=a.phone)) `
@@ -39,10 +40,10 @@ func (s *Store) callGroups(ctx context.Context, card, q string, before, anchor, 
 		return nil, safety("invalid_filter")
 	}
 	rows, err := s.DB.QueryContext(ctx, `WITH grouped AS (
- SELECT min(c.id) first_id,max(c.id) last_id,count(*) total,sum(CASE WHEN c.state='missed' THEN 1 ELSE 0 END) missed
- FROM calls c WHERE (?='' OR (?='unknown' AND c.card_id IS NULL) OR c.card_id=?) AND `+callSearchFilter+` AND `+callGroupScope+`
+ SELECT min(c.id) first_id,max(c.id) last_id,count(*) total,sum(CASE WHEN c.state='missed' THEN 1 ELSE 0 END) missed,coalesce(group_concat(vg.media_id), '') recordings
+ FROM calls c LEFT JOIN voicemails vg ON vg.call_id=c.id AND vg.stored_name<>'' WHERE (?='' OR (?='unknown' AND c.card_id IS NULL) OR c.card_id=?) AND `+callSearchFilter+` AND `+callGroupScope+`
  GROUP BY c.card_id,c.phone,CASE WHEN c.card_id IS NULL OR trim(c.phone)='' OR lower(c.phone)='anonymous' THEN c.id ELSE 0 END
- ) SELECT `+callColumns+`,g.first_id,g.total,g.missed`+callJoin+` JOIN grouped g ON g.last_id=c.id WHERE (?=0 OR g.last_id<?) ORDER BY g.last_id DESC LIMIT 51`, card, card, card, q, q, q, anchor, anchor, anchor, before, before)
+ ) SELECT `+callColumns+`,g.first_id,g.total,g.missed,g.recordings`+callJoin+` JOIN grouped g ON g.last_id=c.id WHERE (?=0 OR g.last_id<?) ORDER BY g.last_id DESC LIMIT 51`, card, card, card, q, q, q, anchor, anchor, anchor, before, before)
 	if err != nil {
 		return nil, err
 	}
@@ -50,9 +51,13 @@ func (s *Store) callGroups(ctx context.Context, card, q string, before, anchor, 
 	out := []CallGroup{}
 	for rows.Next() {
 		var g CallGroup
-		g.Latest, err = scanCall(rows, now, &g.ID, &g.Count, &g.MissedCount)
+		var recordings string
+		g.Latest, err = scanCall(rows, now, &g.ID, &g.Count, &g.MissedCount, &recordings)
 		if err != nil {
 			return nil, err
+		}
+		if recordings != "" {
+			g.VoicemailMediaIDs = strings.Split(recordings, ",")
 		}
 		out = append(out, g)
 	}

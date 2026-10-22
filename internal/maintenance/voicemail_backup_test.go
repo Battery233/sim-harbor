@@ -79,3 +79,85 @@ func TestVoicemailBackupRestoresIndexNotAudio(t *testing.T) {
 		t.Fatal("separate audio restore", err)
 	}
 }
+
+func TestVoicemailDeletionTombstoneSurvivesBackupRestore(t *testing.T) {
+	s := fixture(t)
+	ctx := context.Background()
+	dir := t.TempDir()
+	audio := []byte("#!AMR\nSYNTHETIC-DELETED")
+	media, _, _, err := s.SaveVoicemail(ctx, dir, audio, 1, "SYNTHETIC-CALLER", 11000, 12000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = s.DeleteVoicemail(ctx, dir, media); err != nil {
+		t.Fatal(err)
+	}
+	archive, err := Create(ctx, s, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer archive.Close()
+	preview, err := Inspect(ctx, archive.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(t.TempDir(), "restored")
+	if _, err = Restore(ctx, archive.Path, target, preview.ArchiveSHA256); err != nil {
+		t.Fatal(err)
+	}
+	restored, err := store.Open(filepath.Join(target, "sim.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer restored.DB.Close()
+	got, _, duplicate, err := restored.SaveVoicemail(ctx, target, audio, 1, "SYNTHETIC-CALLER", 11000, 13000)
+	if err != nil || !duplicate || got != media {
+		t.Fatal("restored deletion dedup failed", err)
+	}
+	items, err := restored.UnlinkedVoicemails(ctx, 0)
+	if err != nil || len(items) != 0 {
+		t.Fatal("restored tombstone visible", err)
+	}
+	if _, err = os.Stat(filepath.Join(target, "voicemail", media+".amr")); !os.IsNotExist(err) {
+		t.Fatal("restored deleted audio", err)
+	}
+}
+
+func TestDelayedVoicemailNotificationsRestoreHeldWithoutReplay(t *testing.T) {
+	s := fixture(t)
+	ctx := context.Background()
+	now := time.Now().Unix()
+	if _, err := s.DB.Exec(`INSERT INTO calls(key,device_id,slot,phone,start_ts,connected_ts,end_ts,ended,state,received_at,voicemail_due_at) VALUES('SYNTHETIC-DELAY','SIM-TEST',1,'anonymous',?,?,?,?, 'answered',?,?);
+ INSERT INTO call_notifications(call_id,card_name,group_name,state,kind,accepted_at,attempted_at,created_at) VALUES(last_insert_rowid(),'SYNTHETIC','SYNTHETIC','sent','voicemail_missing',?,?,?);`, now-200, now-199, now-190, 1, now, now-10, now-5, now-5, now-10); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := s.SaveVoicemail(ctx, t.TempDir(), []byte("#!AMR\nSYNTHETIC"), 1, "anonymous", now-200, now); err != nil {
+		t.Fatal(err)
+	}
+	archive, err := Create(ctx, s, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer archive.Close()
+	preview, err := Inspect(ctx, archive.Path)
+	if err != nil || preview.Manifest.Schema != 20 || preview.Manifest.Counts["call_notifications"] != 2 {
+		t.Fatal("delayed ledger not backed up", preview.Manifest, err)
+	}
+	target := filepath.Join(t.TempDir(), "restored")
+	if _, err = Restore(ctx, archive.Path, target, preview.ArchiveSHA256); err != nil {
+		t.Fatal(err)
+	}
+	restored, err := store.Open(filepath.Join(target, "sim.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer restored.DB.Close()
+	var first, second string
+	var due int64
+	restored.DB.QueryRow(`SELECT state FROM call_notifications WHERE phase=0`).Scan(&first)
+	restored.DB.QueryRow(`SELECT state FROM call_notifications WHERE phase=1`).Scan(&second)
+	restored.DB.QueryRow(`SELECT voicemail_due_at FROM calls WHERE key='SYNTHETIC-DELAY'`).Scan(&due)
+	if first != "sent" || second != "restore_held" || due != -1 {
+		t.Fatal("restored old notifications rearmed", first, second, due)
+	}
+}

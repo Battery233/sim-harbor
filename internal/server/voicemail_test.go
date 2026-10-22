@@ -31,7 +31,7 @@ func enableVoicemail(c *config.Config, token string, slots ...int) {
 	c.VoicemailAMRURL = voicemailURL(token)
 }
 
-func TestVoicemailUnansweredCallSendsNoCommandsAndSkipsMissedBark(t *testing.T) {
+func TestVoicemailUnansweredCallSendsNoCommandsAndKeepsMissedBark(t *testing.T) {
 	payloads := make(chan map[string]any, 2)
 	receiver := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var p map[string]any
@@ -50,8 +50,8 @@ func TestVoicemailUnansweredCallSendsNoCommandsAndSkipsMissedBark(t *testing.T) 
 	go func() { s.RunNotifications(ctx); close(done) }()
 	defer func() { cancel(); <-done }()
 	start := time.Now().Unix()
-	send(t, board, s.codec(), map[string]any{"devId": "SIM-TEST", "type": 601, "slot": 2, "iccId": "SYNTHETIC-ICC", "scName": "First name", "phNum": "SYNTHETIC-CALLER", "telStartTs": start, "telConnectedTs": 0})
-	send(t, board, s.codec(), map[string]any{"type": 603, "slot": 2, "iccId": "SYNTHETIC-ICC", "scName": "First name", "phNum": "SYNTHETIC-CALLER", "telStartTs": start, "telConnectedTs": 0, "telEndTs": start + 8})
+	send(t, board, s.codec(), map[string]any{"devId": "SIM-TEST", "type": 601, "slot": 2, "iccId": "SYNTHETIC-ICC", "scName": "First name", "phNum": "anonymous", "telStartTs": start, "telConnectedTs": 0})
+	send(t, board, s.codec(), map[string]any{"type": 603, "slot": 2, "iccId": "SYNTHETIC-ICC", "scName": "First name", "phNum": "anonymous", "telStartTs": start, "telConnectedTs": 0, "telEndTs": start + 2})
 	deadline := time.Now().Add(time.Second)
 	for {
 		call, err := s.Store.Call(context.Background(), 1, start)
@@ -68,13 +68,16 @@ func TestVoicemailUnansweredCallSendsNoCommandsAndSkipsMissedBark(t *testing.T) 
 	if err := s.Store.DB.QueryRow(`SELECT timeout_at FROM calls WHERE id=1`).Scan(&deadlineAt); err != nil || deadlineAt != 0 {
 		t.Fatal("voicemail slot armed missed timeout", deadlineAt, err)
 	}
-	if err := s.Store.DB.QueryRow(`SELECT count(*) FROM call_notifications`).Scan(&jobs); err != nil || jobs != 0 {
-		t.Fatal("missed notification queued", jobs, err)
+	if err := s.Store.DB.QueryRow(`SELECT count(*) FROM call_notifications`).Scan(&jobs); err != nil || jobs != 1 {
+		t.Fatal("missed notification missing", jobs, err)
 	}
 	select {
 	case p := <-payloads:
-		t.Fatal("missed bark on voicemail slot", p["title"])
-	case <-time.After(200 * time.Millisecond):
+		if !strings.Contains(p["title"].(string), "未接") {
+			t.Fatal("wrong reminder", p["title"])
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("missed bark not sent")
 	}
 	board.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
 	if p, err := protocol.NewReader(board).Next(); err == nil {

@@ -196,3 +196,14 @@ test('超时兜底与已确认未接的通知文案区分，结束后仍展示�
   )
   assert.equal(ringingLabel({ state: 'unknown', ring_seconds: null }), '时长未确认')
 })
+
+test('缺失与迟到录音的通知状态各有独立文案', () => {
+  assert.equal(
+    callPushLabel({ notification_state: 'sent', notification_kind: 'voicemail_missing' }),
+    '推送成功 · 录音未收到',
+  )
+  assert.equal(
+    callPushLabel({ notification_state: 'pending', notification_kind: 'voicemail_late' }),
+    '等待推送 · 迟到录音已收到',
+  )
+})

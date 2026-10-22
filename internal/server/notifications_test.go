@@ -122,3 +122,27 @@ func TestNotificationPushFailureCodesAndDisabledTest(t *testing.T) {
 		t.Fatal("disabled test not rejected")
 	}
 }
+
+func TestNotificationPageDefaultsToAllSMSRecords(t *testing.T) {
+	s, _ := fixture(t, 0)
+	e := protocol.Event{DeviceID: "SIM-TEST", Type: 501, Slot: 1, Phone: "SYNTHETIC-SENDER", Body: "SYNTHETIC", SMSTS: 1700000000}
+	raw, _ := json.Marshal(e)
+	if err := s.Store.Ingest(context.Background(), e, raw, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Store.DB.Exec(`UPDATE notifications SET state='sent'`); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		path  string
+		count int
+	}{{"/api/notifications", 1}, {"/api/notifications?state=pending", 0}} {
+		w := request(s, "GET", "http://example.com"+tc.path, "", "")
+		var result struct {
+			Items []json.RawMessage `json:"items"`
+		}
+		if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &result) != nil || len(result.Items) != tc.count {
+			t.Fatal("wrong default filter", w.Code, w.Body.String())
+		}
+	}
+}

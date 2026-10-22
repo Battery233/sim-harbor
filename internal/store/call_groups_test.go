@@ -104,3 +104,27 @@ func TestCallGroupsUnknownIsolationAndGroupPagination(t *testing.T) {
 		t.Fatal("missing group accepted")
 	}
 }
+
+func TestCallGroupIncludesRecordingFromOlderCall(t *testing.T) {
+	s := open(t, filepath.Join(t.TempDir(), "sim.db"))
+	ctx := context.Background()
+	dir := t.TempDir()
+	start := time.Now().Unix() - 100
+	for i := 0; i < 3; i++ {
+		e := callEvent(603, start+int64(i*10))
+		e.TelEndTS = e.TelStartTS + 2
+		recordCall(t, s, e, false)
+	}
+	media, _, _, err := s.SaveVoicemail(ctx, dir, []byte("#!AMR\nSYNTHETIC"), 1, "SYNTHETIC-CALLER", start, start+30)
+	if err != nil {
+		t.Fatal(err)
+	}
+	groups, err := s.CallGroups(ctx, "", "", 0, start+40)
+	if err != nil || len(groups) != 1 || groups[0].Count != 3 || groups[0].Latest.VoicemailID != 0 || len(groups[0].VoicemailMediaIDs) != 1 || groups[0].VoicemailMediaIDs[0] != media {
+		t.Fatal("older recording missing from summary", groups, err)
+	}
+	calls, err := s.CallsInGroup(ctx, groups[0].ID, 0, start+40)
+	if err != nil || calls[2].VoicemailMediaID != media {
+		t.Fatal("recording identity missing", err)
+	}
+}

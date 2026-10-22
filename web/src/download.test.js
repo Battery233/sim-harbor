@@ -161,3 +161,73 @@ test('failed backup download makes one confirmed POST and disposed flow cannot s
   )
   assert.equal(calls, 1)
 })
+
+test('备份流式下载只在长度完整时提交文件，失败时丢弃临时写入', async () => {
+  for (const length of [4, 5]) {
+    const writes = [],
+      events = []
+    const request = createFileRequest({
+      getCredential: () => 'synthetic',
+      onUnauthorized: () => {},
+      fetcher: async () =>
+        new Response('test', {
+          headers: {
+            'Content-Type': 'application/zip',
+            'Content-Disposition': 'attachment; filename="synthetic.zip"',
+            'Content-Length': String(length),
+          },
+        }),
+    })
+    const pending = request('/backups/synthetic/download', 'GET', undefined, {
+      openSink: async () => ({
+        write: async (value) => writes.push(value),
+        close: async () => events.push('close'),
+        abort: async () => events.push('abort'),
+      }),
+    })
+    if (length === 4) {
+      assert.equal(await pending, null)
+      assert.deepEqual(events, ['close'])
+    } else {
+      await assert.rejects(pending, /不完整/)
+      assert.deepEqual(events, ['abort'])
+    }
+    assert.equal(writes.length, 1)
+  }
+})
+test('取消备份下载会中止请求并撤销流式文件；访问身份变化也不会提交', async () => {
+  for (const change of ['abort', 'credential']) {
+    let credential = 'old',
+      closed = 0,
+      aborted = 0
+    const controller = new AbortController()
+    const request = createFileRequest({
+      getCredential: () => credential,
+      onUnauthorized: () => {},
+      fetcher: async () =>
+        new Response('test', {
+          headers: {
+            'Content-Type': 'application/zip',
+            'Content-Disposition': 'attachment;',
+            'Content-Length': '4',
+          },
+        }),
+    })
+    await assert.rejects(
+      request('/backups/synthetic/download', 'GET', undefined, {
+        signal: controller.signal,
+        openSink: async () => ({
+          write: async () => {
+            if (change === 'abort') controller.abort()
+            else credential = 'new'
+          },
+          close: async () => closed++,
+          abort: async () => aborted++,
+        }),
+      }),
+      /中断|变化/,
+    )
+    assert.equal(closed, 0)
+    assert.equal(aborted, 1)
+  }
+})

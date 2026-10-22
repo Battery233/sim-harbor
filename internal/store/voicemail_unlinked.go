@@ -14,7 +14,7 @@ type UnlinkedVoicemail struct {
 }
 
 func (s *Store) UnlinkedVoicemails(ctx context.Context, before int64) ([]UnlinkedVoicemail, error) {
-	rows, err := s.DB.QueryContext(ctx, `SELECT id,slot,phone,start_ts,created_at,size,stored_name FROM voicemails WHERE call_id IS NULL AND (?=0 OR id<?) ORDER BY id DESC LIMIT 51`, before, before)
+	rows, err := s.DB.QueryContext(ctx, `SELECT id,slot,phone,start_ts,created_at,size,stored_name FROM voicemails WHERE stored_name<>'' AND call_id IS NULL AND (?=0 OR id<?) ORDER BY id DESC LIMIT 51`, before, before)
 	if err != nil {
 		return nil, err
 	}
@@ -32,6 +32,6 @@ func (s *Store) UnlinkedVoicemails(ctx context.Context, before int64) ([]Unlinke
 
 func (s *Store) UnlinkedVoicemailFile(ctx context.Context, id int64) (VoicemailFile, error) {
 	var file VoicemailFile
-	err := s.DB.QueryRowContext(ctx, `SELECT stored_name,size FROM voicemails WHERE id=? AND call_id IS NULL`, id).Scan(&file.Name, &file.Size)
+	err := s.DB.QueryRowContext(ctx, `SELECT stored_name,size FROM voicemails WHERE stored_name<>'' AND id=? AND call_id IS NULL`, id).Scan(&file.Name, &file.Size)
 	return file, err
 }

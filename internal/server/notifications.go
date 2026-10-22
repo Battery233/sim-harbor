@@ -45,6 +45,12 @@ func (s *Server) pushNotification(ctx context.Context, n store.Notification) (bo
 		case "voicemail":
 			payload["title"] = name + " 有留言"
 			payload["body"] = caller + " 有留言\n" + when
+		case "voicemail_missing":
+			payload["title"] = name + " 来电已接通，录音未收到"
+			payload["body"] = "来电：" + caller + "\n来电时间：" + when + "\n通话已接通并结束，等待 3 分钟仍未收到关联录音。"
+		case "voicemail_late":
+			payload["title"] = name + " 迟到的录音已收到"
+			payload["body"] = "来电：" + caller + "\n来电时间：" + when + "\n此前未收到的录音现已保存，可打开来电记录播放。"
 		case "timeout":
 			payload["title"] = name + " 来电提示"
 			payload["body"] = caller + " 曾来电，结束时间未确认\n" + when
@@ -106,10 +112,11 @@ func (s *Server) sendPush(ctx context.Context, payload map[string]any) (bool, st
 	return true, "accepted"
 }
 func (s *Server) notificationRoutes(mux *http.ServeMux) {
+	s.notificationRecordRoutes(mux)
 	mux.HandleFunc("GET /api/notifications", func(w http.ResponseWriter, r *http.Request) {
 		state := r.URL.Query().Get("state")
 		if state == "" {
-			state = "pending"
+			state = "all"
 		}
 		before := int64(0)
 		var err error

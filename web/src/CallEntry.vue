@@ -1,4 +1,5 @@
 <script setup>
+import DeleteRecording from './DeleteRecording.vue'
 import { messageSource } from './inbox-cards.js'
 import { callStates, callerLabel, ringingLabel, callPushLabel } from './call-history.js'
 const props = defineProps({
@@ -8,6 +9,9 @@ const props = defineProps({
   onDownload: Function,
   onPlay: Function,
   playback: Object,
+  recordingLabel: String,
+  request: Function,
+  onRecordingChanged: Function,
 })
 function playLabel() {
   if (props.playback?.id !== props.call.id) return '播放留言'
@@ -21,9 +25,12 @@ function date(ts) {
   <article class="call-row" :class="{ 'linked-call': highlighted }">
     <div class="detail-head">
       <h3>{{ callerLabel(call.phone) }}</h3>
-      <span class="badge" :class="{ 'missed-call': call.state === 'missed' }">{{
-        callStates[call.state]
-      }}</span>
+      <span class="call-badges">
+        <span v-if="recordingLabel" class="badge recording-badge">{{ recordingLabel }}</span>
+        <span class="badge" :class="{ 'missed-call': call.state === 'missed' }">{{
+          callStates[call.state]
+        }}</span>
+      </span>
     </div>
     <p class="tiny muted">
       {{ messageSource(call, cards) }} · 来电时卡槽 {{ call.slot
@@ -54,16 +61,21 @@ function date(ts) {
     <p v-if="!call.started_at && call.received_at" class="tiny muted">
       最近报告收到于 {{ date(call.received_at) }}，这不是已确认的来电开始时间。
     </p>
-    <p v-if="call.voicemail_id" class="tiny voicemail-actions">
+    <div v-if="call.voicemail_id" class="tiny voicemail-actions">
       <button type="button" :aria-pressed="playback?.id === call.id" @click="onPlay(call)">
         {{ playLabel() }}
       </button>
       <button type="button" @click="onDownload(call)">下载 AMR</button>
+      <DeleteRecording
+        :request="request"
+        :media="call.voicemail_media_id"
+        @changed="onRecordingChanged(call, $event)"
+      />
       <span class="muted"
         >{{ call.voicemail_bytes }} 字节。下载仍是原始
         AMR。若提示录音文件不在，说明只恢复了索引，需要把 voicemail/ 目录单独放回。</span
       >
-    </p>
+    </div>
     <p class="tiny" :class="{ 'call-push-sent': call.notification_state === 'sent' }">
       {{ callPushLabel(call)
       }}<span v-if="call.notification_accepted_at">

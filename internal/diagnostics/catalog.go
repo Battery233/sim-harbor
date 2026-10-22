@@ -14,6 +14,8 @@ var catalog = map[string]Definition{
 	"sms_fragment_rejected":           {"warn", "sms", "长短信上报未能入库，原有记录保留"},
 	"board_parameter_command":         {"info", "query", "板子参数命令已尝试下发"},
 	"board_parameter_verified":        {"info", "query", "板子参数修改已读回确认"},
+	"voicemail_deleted":               {"info", "call", "已按确认删除录音，通话记录和去重凭据保留"},
+	"voicemail_delete_cleanup_failed": {"warn", "call", "录音删除已登记，文件清理未完成；下次启动重试已登记的清理"},
 	"voicemail_stored":                {"info", "call", "留言录音已保存"},
 	"voicemail_rejected":              {"warn", "call", "留言录音未接受"},
 	"voicemail_sms_channel":           {"info", "query", "TCP 来电方式被拒绝，确认后的模式写入改用短信；启用不再下发提示音预设"},

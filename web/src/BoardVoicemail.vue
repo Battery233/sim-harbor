@@ -2,6 +2,8 @@
 import { ref, watch, computed, onUnmounted } from 'vue'
 import { uploadAddressView } from './recording-settings.js'
 import InfoTip from './InfoTip.vue'
+import RecordingStorage from './RecordingStorage.vue'
+import RecordingActivity from './RecordingActivity.vue'
 import {
   createBoardSettingsFlow,
   voicemailApplyNote,
@@ -128,7 +130,13 @@ function slotLine(slot) {
 onUnmounted(() => flow.dispose())
 const appReady = computed(() => props.appSettings?.ready === true)
 const canEnable = computed(() => appReady.value && props.appSettings?.receivingReady === true)
-const targetAddress = computed(() => uploadAddressView(props.appSettings?.url || ''))
+const targetAddress = computed(() => uploadAddressView(props.appSettings?.url || '', true))
+const addressesMatch = computed(
+  () =>
+    appReady.value &&
+    !!voicemail.value?.amr_url &&
+    voicemail.value.amr_url === props.appSettings?.url,
+)
 const addressStatus = computed(() => {
   if (!appReady.value)
     return '上方设置尚未保存或生效。启用前请先处理，再重新读取板子；停用以当前运行配置和下方预览为准。'
@@ -147,6 +155,7 @@ const addressStatus = computed(() => {
         TCP；部分固件修改接听方式和清除预设提示语需要设置短信。应用的提示文字在接通后下发，不保存为板子预设。</InfoTip
       >
     </h2>
+    <RecordingStorage :request="request" />
     <p v-if="state && state.voicemail_enabled !== true" class="notice">
       应用接收服务当前未开启。请先完成上方设置并重启应用；停止板子自动接听不受影响。
     </p>
@@ -157,15 +166,24 @@ const addressStatus = computed(() => {
       读取板子设置（不发短信）
     </button>
     <template v-if="voicemail">
+      <h3 class="recording-section-title">
+        板子配置
+        <InfoTip label="板子配置核对说明"
+          >这里读取板子保存的接听方式和预设提示语。当前固件拒绝 TCP
+          查询时，请在板子后台核对；并不表示接听或播放失败。应用接通后临时下发的提示语与板子预设分开。</InfoTip
+        >
+      </h3>
       <p v-for="slot in voicemail.slots" :key="slot.slot">{{ slotLine(slot) }}</p>
       <dl class="recording-addresses">
         <div>
           <dt>板子当前上传地址 · TCP 已读回</dt>
-          <dd>{{ uploadAddressView(voicemail.amr_url) }}</dd>
+          <dd>{{ uploadAddressView(voicemail.amr_url, true) }}</dd>
         </div>
         <div>
           <dt>应用当前接收地址 · 只读</dt>
-          <dd>{{ appReady ? targetAddress : '尚未确认生效' }}</dd>
+          <dd>
+            {{ addressesMatch ? '✓ 与板子配置一致' : appReady ? targetAddress : '尚未确认生效' }}
+          </dd>
         </div>
       </dl>
       <p class="tiny muted">
@@ -238,6 +256,11 @@ const addressStatus = computed(() => {
           ></label
         >
       </template>
+      <p class="tiny muted recording-board-hint">
+        也可在板子 /mgr
+        后台手动设置来电应答和同一个上传地址，无需重复发送设置短信。手动设置后请重新读取核对；TCP
+        无法读回的项目仍需在板子后台确认。
+      </p>
       <button
         type="button"
         class="primary"
@@ -255,14 +278,12 @@ const addressStatus = computed(() => {
       >
         确认执行一次
       </button>
-      <details class="settings-group settings-advanced">
-        <summary>也可以在板子后台手动配置</summary>
-        <p class="tiny muted">
-          能访问板子的 /mgr
-          时，可在那里设置来电应答，并配置同一个上传地址，无需再发送重复设置短信。应用不会自动把人工配置标记为已确认；TCP
-          无法读回的项目仍需在板子后台核对。
-        </p>
-      </details>
     </template>
+    <p class="tiny muted">
+      应用接通提示语：{{
+        appReady ? (state?.voicemail_enabled ? '已开启，接通后播放一次' : '已关闭') : '待配置生效'
+      }}。
+    </p>
+    <RecordingActivity :request="request" />
   </section>
 </template>

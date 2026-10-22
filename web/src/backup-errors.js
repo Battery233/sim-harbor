@@ -1,0 +1,16 @@
+export const backupErrors = {
+  backup_in_progress: '另一份备份或迁移确认正在处理，请稍后刷新。',
+  backup_limit_exceeded: '数据库超过 512 MiB 备份上限。',
+  backup_confirmation_required: '请选择保存方式，并确认妥善保管私人数据备份。',
+  backup_delete_confirmation_required: '请先确认删除这份服务器备份。',
+  backup_request_conflict: '备份请求已存在，请刷新查看原任务。',
+  backup_storage_full: '服务器备份达到容量或数量上限，请先下载并手动删除不再需要的备份。',
+  backup_disk_space_low: '服务器剩余磁盘空间不足，备份未完成；已有备份保留。',
+  backup_files_unavailable: '服务器备份目录无法读取，请检查目录权限和文件完整性。',
+  backup_download_in_progress: '备份正在下载，暂时不能删除，或已有两份下载正在进行。',
+  backup_not_found: '备份已删除或临时保留时间已到，请刷新列表。',
+  backup_interrupted: '备份生成被中断，未完成的临时文件会清理；请核对列表后重新生成。',
+  backup_cleanup_failed: '备份清理未完成，请检查服务器目录和权限；不会自动删除其他备份。',
+  backup_status_failed: '备份状态未能保存，请刷新列表核对文件，不要直接重复生成。',
+  backup_failed: '备份未完成，请检查服务器状态；已有备份保留。',
+}

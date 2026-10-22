@@ -247,6 +247,12 @@ DELETE FROM schema_version; INSERT INTO schema_version VALUES(6);`); e != nil {
 		}
 	}
 
+	if version.Int64 < 20 {
+		if e = migrateVoicemailDelay(tx); e != nil {
+			return e
+		}
+	}
+
 	if _, e = tx.Exec(`UPDATE calls SET state='unknown' WHERE ended=0`); e != nil {
 		return e
 	}

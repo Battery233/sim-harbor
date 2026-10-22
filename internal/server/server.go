@@ -62,6 +62,9 @@ type Server struct {
 	conns            map[net.Conn]struct{}
 	sendGate         sync.Mutex
 	backupGate       sync.Mutex
+	backupsOnce      sync.Once
+	backups          *backupRepository
+	backupsErr       error
 	migrationGate    sync.Mutex
 	migrationBackup  *migrationBackup
 	migrationPreview *migrationPreview
@@ -80,6 +83,13 @@ func New(c config.Config, s *store.Store, logs ...*diagnostics.Recorder) *Server
 	recorder := diagnostics.New(c.LogLevel, c.DiagnosticsLimit, nil)
 	if len(logs) > 0 && logs[0] != nil {
 		recorder = logs[0]
+	}
+	if s != nil && c.DataDir != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		if err := s.CleanupDeletedVoicemails(ctx, c.DataDir); err != nil {
+			recorder.Record("voicemail_delete_cleanup_failed", diagnostics.Fields{})
+		}
+		cancel()
 	}
 	return &Server{Logs: recorder, Config: c, Store: s, conns: map[net.Conn]struct{}{}, client: &http.Client{Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
 }
@@ -425,6 +435,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/messages/{id}/delete", s.deleteMessage)
 	mux.HandleFunc("GET /api/messages/export", s.exportMessages)
 	mux.HandleFunc("POST /api/backups/download", s.downloadBackup)
+	s.backupRoutes(mux)
 	s.migrationRoutes(mux)
 	mux.HandleFunc("GET /api/messages", func(w http.ResponseWriter, r *http.Request) {
 		slot, e := strconv.Atoi(r.URL.Query().Get("slot"))
@@ -666,6 +677,15 @@ func (s *Server) RunNotifications(ctx context.Context) {
 			for i := 0; i < 10; i++ {
 				s.notificationGate.Lock()
 				if e := s.Store.QueueCallTimeouts(ctx, time.Now().Unix()); e != nil {
+					s.notificationGate.Unlock()
+					s.Logs.Record("notification_queue_failed", diagnostics.Fields{})
+					break
+				}
+				var voicemailSlots []int
+				if s.Config.VoicemailEnabled {
+					voicemailSlots = s.Config.VoicemailSlots
+				}
+				if e := s.Store.QueueVoicemailTimeouts(ctx, time.Now().Unix(), voicemailSlots...); e != nil {
 					s.notificationGate.Unlock()
 					s.Logs.Record("notification_queue_failed", diagnostics.Fields{})
 					break

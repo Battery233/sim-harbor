@@ -80,12 +80,14 @@ func run() bool {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	app := server.New(c, db, logs)
+	defer app.CloseBackups()
 	var restart atomic.Bool
 	app.Settings = settings
 	app.Restart = func() { restart.Store(true); cancel() }
 	httpServer := &http.Server{Handler: app.Handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 60 * time.Second, IdleTimeout: 60 * time.Second}
 	var wg sync.WaitGroup
-	wg.Add(5)
+	wg.Add(6)
+	go func() { defer wg.Done(); app.RunBackups(ctx) }()
 	go func() {
 		defer wg.Done()
 		if app.ServeTCP(ctx, tcp) != nil {

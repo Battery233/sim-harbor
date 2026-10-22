@@ -33,6 +33,18 @@ let stopped = false,
   poll
 const groups = [
   {
+    title: '数据备份',
+    fields: [
+      [
+        'backup_max_storage_mib',
+        '服务器备份总容量（MiB，544～65536；0 使用默认 2048）',
+        'number',
+        0,
+        65536,
+      ],
+    ],
+  },
+  {
     title: '管理访问',
     fields: [['admin_token_header', '自定义鉴权请求头（留空使用 Authorization）', 'text']],
   },
@@ -134,6 +146,7 @@ const canSave = computed(
     !restarting.value &&
     !props.locked &&
     consent.value &&
+    hasEdits.value &&
     !enableProblem.value &&
     (!enablingVoicemail.value || voicemailConsent.value),
 )
@@ -156,12 +169,13 @@ const dirty = computed(
     JSON.stringify(normalizedSettingsValues(editedValues.value)) !==
       JSON.stringify(normalizedSettingsValues(snapshot.value.values)),
 )
+const hasEdits = computed(() => dirty.value || Object.values(secrets.value).some(Boolean))
 watch(
   () => ({
     revision: snapshot.value?.revision,
     ready:
       !!snapshot.value &&
-      !dirty.value &&
+      !hasEdits.value &&
       !snapshot.value.pending_restart &&
       !busy.value &&
       !uncertain.value &&
@@ -255,7 +269,7 @@ async function restart() {
     busy.value ||
     restarting.value ||
     uncertain.value ||
-    dirty.value ||
+    hasEdits.value ||
     props.locked
   )
     return
@@ -467,88 +481,111 @@ onUnmounted(() => {
             />开启录音接收与接通提示语（保存并重启后生效）</label
           >
           <div class="recording-fields">
-            <label
-              >上传方式<select v-model="selectedMode">
-                <option value="lan">局域网直连（HTTP）</option>
-                <option value="public">公网入口（HTTPS）</option>
-              </select></label
-            >
-            <p class="tiny muted">
-              切换方式不会替换现有地址或令牌，也不会修改板子。请核对地址后保存。
-            </p>
-            <div v-if="selectedMode === 'lan'" class="notice">
-              <template v-if="reception">
-                当前生效的设备来源白名单：{{ reception.allowlist_enabled ? '已开启' : '未开启' }}。
-                <template v-if="reception.allowlist_enabled"
-                  >允许来源：{{ reception.device_cidrs.join('、') }}。</template
+            <div class="recording-field">
+              <label
+                >上传方式<select v-model="selectedMode">
+                  <option value="lan">局域网直连（HTTP）</option>
+                  <option value="public">公网入口（HTTPS）</option>
+                </select></label
+              >
+              <p class="tiny muted">
+                切换方式不会替换现有地址或令牌，也不会修改板子。请核对地址后保存。
+              </p>
+              <div
+                v-if="selectedMode === 'lan'"
+                class="notice"
+                :class="{
+                  error:
+                    reception?.allowlist_enabled === false ||
+                    values.device_allowlist_enabled === false,
+                }"
+                :role="enableProblem ? 'alert' : 'status'"
+              >
+                <p v-if="reception">
+                  当前生效的设备来源白名单：{{
+                    reception.allowlist_enabled ? '已开启' : '未开启'
+                  }}。
+                  <template v-if="reception.allowlist_enabled"
+                    >允许来源：{{ reception.device_cidrs.join('、') }}。</template
+                  >
+                  <template v-else>局域网录音上传会被拒绝。</template>
+                </p>
+                <p v-else>尚未读到当前生效的设备来源白名单，请重新读取配置。</p>
+                <p
+                  v-if="
+                    values.device_allowlist_enabled === false &&
+                    reception?.allowlist_enabled !== false
+                  "
                 >
-                <template v-else>白名单关闭时，录音上传会被拒绝。</template>
-              </template>
-              <template v-else>尚未读到当前生效的设备来源白名单，请重新读取配置。</template>
-              <span v-if="snapshot.pending_restart"
-                >有配置待重启；这里显示的是重启前的实际状态。</span
-              >
-              如需修改，请到“系统配置 → 高级连接设置”，保存后重启应用，并重新读取本页。
+                  已保存的白名单设置为关闭，不能启用局域网录音上传。
+                </p>
+                <p v-if="snapshot.pending_restart">有配置待重启；这里显示的是重启前的实际状态。</p>
+                <p>如需调整，请到“系统配置 → 高级连接设置”，保存并重启应用，再重新读取本页。</p>
+              </div>
+              <p v-if="selectedMode === 'public'" class="notice">
+                板子填写公网 HTTPS 上传地址，Tunnel 可用本机 HTTP
+                转发。只开放录音上传路径，不要求邮箱登录；管理页面继续保持保护。
+              </p>
             </div>
-            <p v-if="enableProblem" class="notice error" role="alert">{{ enableProblem }}</p>
-            <p v-if="selectedMode === 'public'" class="notice">
-              板子填写公网 HTTPS 上传地址，Tunnel 可用本机 HTTP
-              转发。只开放录音上传路径，不要求邮箱登录；管理页面继续保持保护。
-            </p>
-            <p class="tiny muted">
-              目标卡槽：开启或停用板子设置时使用这些卡槽；留空不会默认修改两张卡。
-            </p>
-            <div class="settings-grid">
-              <label class="consent"
-                ><input
-                  type="checkbox"
-                  :checked="(values.voicemail_slots || []).includes(1)"
-                  @change="toggleVoicemailSlot(1)"
-                />卡槽 1</label
-              >
-              <label class="consent"
-                ><input
-                  type="checkbox"
-                  :checked="(values.voicemail_slots || []).includes(2)"
-                  @change="toggleVoicemailSlot(2)"
-                />卡槽 2</label
-              >
+            <div class="recording-field">
+              <p class="tiny muted">
+                目标卡槽：开启或停用板子设置时使用这些卡槽；留空不会默认修改两张卡。
+              </p>
+              <div class="settings-grid">
+                <label class="consent"
+                  ><input
+                    type="checkbox"
+                    :checked="(values.voicemail_slots || []).includes(1)"
+                    @change="toggleVoicemailSlot(1)"
+                  />卡槽 1</label
+                >
+                <label class="consent"
+                  ><input
+                    type="checkbox"
+                    :checked="(values.voicemail_slots || []).includes(2)"
+                    @change="toggleVoicemailSlot(2)"
+                  />卡槽 2</label
+                >
+              </div>
             </div>
-            <label
-              >给来电者播放的提示语<textarea
-                v-model="values.voicemail_tts"
-                rows="3"
-                maxlength="274"
-                placeholder="请在提示音后留言"
-              />
-            </label>
-            <p class="tiny muted">接通后只播放一遍，播完不挂断；不会改写板子预设提示语。</p>
-            <label
-              >板子录音上传地址<input
-                v-model="values.voicemail_amr_url"
-                type="text"
-                maxlength="500"
-                :placeholder="
+            <div class="recording-field">
+              <label
+                >给来电者播放的提示语<textarea
+                  v-model="values.voicemail_tts"
+                  rows="3"
+                  maxlength="274"
+                  placeholder="请在提示音后留言"
+                />
+              </label>
+              <p class="tiny muted">接通后只播放一遍，播完不挂断；不会改写板子预设提示语。</p>
+            </div>
+            <div class="recording-field">
+              <label
+                >板子录音上传地址<input
+                  v-model="values.voicemail_amr_url"
+                  type="text"
+                  maxlength="500"
+                  :placeholder="
+                    selectedMode === 'public'
+                      ? 'https://upload.example.com/api/voicemail/amr/…'
+                      : 'http://192.168.31.10:18880/api/voicemail/amr/…'
+                  "
+              /></label>
+              <button v-if="!values.voicemail_amr_url" type="button" @click="fillVoicemailURL">
+                生成上传地址模板
+              </button>
+              <p v-else class="tiny muted">
+                现有地址和令牌会保留。修改后请保存并重启应用，再在第二步同步到板子。
+              </p>
+              <p class="tiny muted">
+                {{
                   selectedMode === 'public'
-                    ? 'https://upload.example.com/api/voicemail/amr/…'
-                    : 'http://192.168.31.10:18880/api/voicemail/amr/…'
-                "
-              />
-            </label>
-            <button v-if="!values.voicemail_amr_url" type="button" @click="fillVoicemailURL">
-              生成上传地址模板
-            </button>
-            <p v-else class="tiny muted">
-              现有地址和令牌会保留。修改后请保存并重启应用，再在第二步同步到板子。
-            </p>
-            <p class="tiny muted">
-              {{
-                selectedMode === 'public'
-                  ? '使用你自己的 HTTPS 上传域名，模板中的 example.com 需替换。'
-                  : '使用运行本应用的主机局域网 IP 和端口，模板中的 x 需替换。'
-              }}
-              地址中的随机令牌就是上传凭据，无需另填。请保密，不要删除关联参数。下方会读取板子地址，按完整地址核对。
-            </p>
+                    ? '使用你自己的 HTTPS 上传域名，模板中的 example.com 需替换。'
+                    : '使用运行本应用的主机局域网 IP 和端口，模板中的 x 需替换。'
+                }}
+                地址中的随机令牌就是上传凭据，无需另填。请保密，不要删除关联参数。下方会读取板子地址，按完整地址核对。
+              </p>
+            </div>
             <details v-if="selectedMode === 'public'" class="settings-group settings-advanced">
               <summary>公网接收保护</summary>
               <label
@@ -627,7 +664,7 @@ onUnmounted(() => {
           <p>数据目录：{{ values.data_directory }}</p>
           <p>网页程序目录：{{ values.static_directory }}</p>
         </div>
-        <label class="consent"
+        <label v-if="hasEdits" class="consent"
           ><input v-model="consent" type="checkbox" />{{
             recording
               ? '我已核对卡槽、提示语和上传地址；保存后还需重启应用，板子不会自动改变。'
@@ -635,16 +672,26 @@ onUnmounted(() => {
           }}</label
         >
         <button class="primary" :disabled="!canSave">
-          {{ busy ? '处理中…' : recording ? '保存应用录音设置' : '保存配置' }}
+          {{
+            busy
+              ? '处理中…'
+              : !hasEdits && snapshot.pending_restart
+                ? '已保存，请在下方重启应用'
+                : !hasEdits
+                  ? '配置已保存'
+                  : recording
+                    ? '保存应用录音设置'
+                    : '保存配置'
+          }}
         </button>
       </fieldset>
     </form>
     <div v-if="snapshot?.pending_restart" class="settings-group">
-      <h3>使保存的配置生效</h3>
+      <h3>下一步：重启应用，使配置生效</h3>
       <p v-if="recording" class="tiny muted">
         重启会使所有已保存的应用配置生效，包括“系统配置”页的变更；不会重启板子。
       </p>
-      <p v-if="dirty" class="notice">
+      <p v-if="hasEdits" class="notice">
         还有未保存的编辑。重启只使用已保存配置，请先保存或重新读取配置。
       </p>
       <p class="tiny muted">
@@ -654,10 +701,11 @@ onUnmounted(() => {
         ><input
           v-model="restartConsent"
           type="checkbox"
-          :disabled="busy || restarting || dirty || locked"
+          :disabled="busy || restarting || hasEdits || locked"
         />确认按已保存的配置重启应用</label
       ><button
-        :disabled="!restartConsent || busy || restarting || uncertain || dirty || locked"
+        class="primary"
+        :disabled="!restartConsent || busy || restarting || uncertain || hasEdits || locked"
         @click="restart"
       >
         确认重启应用

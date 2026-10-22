@@ -1,6 +1,7 @@
 <script setup>
 import InfoTip from './InfoTip.vue'
 import MigrationRecovery from './MigrationRecovery.vue'
+import BackupManager from './BackupManager.vue'
 import BoardStorage from './BoardStorage.vue'
 import { ref, computed, onUnmounted } from 'vue'
 import { messageExportQuery, createDownloadFlow, saveFile } from './download.js'
@@ -16,7 +17,6 @@ const cardOptions = computed(() => cardFilterOptions(props.state))
 const busy = ref(false),
   notice = ref(''),
   failed = ref(false)
-const backupConsent = ref(false)
 const flow = createDownloadFlow({
   request: (...args) => props.fileRequest(...args),
   save: saveFile,
@@ -46,23 +46,6 @@ async function exportMessages() {
   }
 }
 onUnmounted(() => flow.dispose())
-async function backup() {
-  if (!backupConsent.value || busy.value) return
-  busy.value = true
-  notice.value = ''
-  failed.value = false
-  try {
-    if (await flow.run('/backups/download', 'sim-backup.zip', 'POST', { confirmed: true }))
-      notice.value =
-        '备份已交给浏览器下载。ZIP 不含留言录音。恢复前需使用本应用校验，恢复仅写入全新目录并阻止外发。录音请另行保存 voicemail/ 目录。'
-  } catch (e) {
-    failed.value = true
-    notice.value = e.message
-  } finally {
-    busy.value = false
-    backupConsent.value = false
-  }
-}
 </script>
 <template>
   <div class="outbox">
@@ -110,35 +93,7 @@ async function backup() {
       </form>
     </section>
     <BoardStorage :request="request" :state="state" />
-    <section class="panel compose">
-      <h2>
-        数据库备份
-        <InfoTip label="数据库备份说明"
-          >生成当前数据库的一致快照，包含收件、发件与结果、通知任务及设备状态。不会发送短信或触发新的通知。<br />备份含私人短信、完整号码和设备身份；不包含应用配置、环境变量密钥或日志。请保存在私人位置，另行保管配置与凭据。当前数据库上限为
-          256 MiB。<br />安全恢复使用服务器上的维护工具，先校验和预览，再写入全新目录；原数据库保留。网页不覆盖正在运行的数据。</InfoTip
-        >
-      </h2>
-      <p v-if="state?.outbound_restore_blocked" class="notice">
-        当前数据库来自恢复，外发已被持久阻止。可查看历史、接收新短信和备份；请使用下方迁移确认流程解除。
-      </p>
-      <label class="consent"
-        ><input
-          type="checkbox"
-          v-model="backupConsent"
-          :disabled="busy"
-        />我确认下载并妥善保管私人数据备份</label
-      >
-      <p class="notice">
-        下载前请知悉：ZIP 包含数据库、留言索引和控制短信账本，不包含 voicemail/ 里的 AMR
-        录音。需要保留录音时，请另行复制数据目录中的 voicemail/，恢复数据库后再放回同名目录。只恢复
-        ZIP 不会带回录音文件，也不要把完成提示理解成录音已保存。应用配置和凭据仍需另行保管。
-      </p>
-      <div class="outgoing-actions">
-        <button :disabled="busy || !backupConsent" @click="backup">
-          {{ busy ? '正在生成文件…' : '生成并下载备份' }}
-        </button>
-      </div>
-    </section>
+    <BackupManager :request="request" :file-request="fileRequest" :state="state" />
     <MigrationRecovery v-if="request" :request="request" @changed="emit('changed')" />
   </div>
 </template>

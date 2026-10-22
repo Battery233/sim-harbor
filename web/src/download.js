@@ -1,3 +1,5 @@
+import { backupErrors } from './backup-errors.js'
+
 // Binary/text downloads share the management credential and never retry.
 // A replaced credential, canceled view or incomplete response cannot download.
 export function createFileRequest({
@@ -10,7 +12,13 @@ export function createFileRequest({
   return async (path, method = 'GET', body, options = {}) => {
     const credential = getCredential()
     const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), timeout)
+    const abort = () => controller.abort()
+    options.signal?.addEventListener('abort', abort, { once: true })
+    if (options.signal?.aborted) controller.abort()
+    const limit =
+      Number.isFinite(options.timeout) && options.timeout > 0 ? options.timeout : timeout
+    const timer = setTimeout(abort, limit)
+    let sink, reader
     try {
       const authHeaders = getAuthHeaders
         ? await getAuthHeaders(credential)
@@ -41,6 +49,7 @@ export function createFileRequest({
           /* No raw server text in the UI. */
         }
         const messages = {
+          ...backupErrors,
           export_limit_exceeded: '超过导出上限，请缩小日期或卡范围。',
           invalid_filter: '导出条件无效。',
           export_in_progress: '另一份收件导出正在生成，请稍后。',
@@ -63,32 +72,42 @@ export function createFileRequest({
         Number.isSafeInteger(options.max) && options.max > 0
           ? options.max
           : type === 'application/zip'
-            ? 272 * 1024 * 1024
+            ? 544 * 1024 * 1024
             : 32 * 1024 * 1024
       if (!length || !/^\d+$/.test(length) || Number(length) > max)
         throw new Error('文件大小无效。')
-      const reader = response.body.getReader()
+      reader = response.body.getReader()
+      if (options.openSink) sink = await options.openSink()
       const chunks = []
       let size = 0
-      try {
-        while (true) {
-          const { value, done } = await reader.read()
-          if (done) break
-          size += value.byteLength
-          if (size > max || size > Number(length)) throw new Error('文件大小超出声明范围。')
-          chunks.push(value)
-        }
-      } catch (e) {
-        await reader.cancel().catch(() => {})
-        throw e
-      } finally {
-        reader.releaseLock()
+      while (true) {
+        const { value, done } = await reader.read()
+        if (done) break
+        size += value.byteLength
+        if (size > max || size > Number(length)) throw new Error('文件大小超出声明范围。')
+        if (credential !== getCredential() || controller.signal.aborted)
+          throw new Error('下载已中断或访问身份已变化。')
+        if (sink) await sink.write(value)
+        else chunks.push(value)
       }
       if (size !== Number(length) || credential !== getCredential())
         throw new Error('下载不完整或访问身份已变化。')
+      if (controller.signal.aborted) throw new Error('下载已中断。')
+      if (sink) {
+        await sink.close()
+        sink = null
+        return null
+      }
       return new Blob(chunks, { type })
+    } catch (e) {
+      abort()
+      if (reader) await reader.cancel().catch(() => {})
+      if (sink) await sink.abort().catch(() => {})
+      throw e
     } finally {
+      reader?.releaseLock()
       clearTimeout(timer)
+      options.signal?.removeEventListener('abort', abort)
     }
   }
 }

@@ -136,3 +136,15 @@ test('局域网白名单关闭时阻止新启用；允许停用及保留旧配�
     /白名单/,
   )
 })
+
+test('详细地址只展示接收路径，不泄露上传令牌、查询参数或用户信息', () => {
+  const result = uploadAddressView(
+    'https://user:password@upload.example.com/api/voicemail/amr/' +
+      'a'.repeat(32) +
+      '?phone=SECRET',
+    true,
+  )
+  assert.equal(result, 'https://upload.example.com/api/voicemail/amr/…')
+  assert.equal(result.includes('SECRET'), false)
+  assert.equal(result.includes('password'), false)
+})

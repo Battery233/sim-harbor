@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -8,7 +9,9 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"time"
 
+	"github.com/Battery233/sim-harbor/internal/diagnostics"
 	"github.com/Battery233/sim-harbor/internal/store"
 )
 
@@ -19,6 +22,69 @@ type unlinkedVoicemailView struct {
 }
 
 func (s *Server) unlinkedVoicemailRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("GET /api/voicemails/activity", func(w http.ResponseWriter, r *http.Request) {
+		items, err := s.Store.VoicemailActivity(r.Context(), s.Config.DeviceID)
+		if err != nil {
+			outgoingError(w, err)
+			return
+		}
+		for i, item := range items {
+			if item.RecordingAt > 0 {
+				file, err := s.Store.VoicemailFile(r.Context(), item.CallID)
+				if err == nil {
+					f, openErr := s.openVoicemailFile(file)
+					if openErr == nil {
+						items[i].RecordingAvailable = true
+						f.Close()
+					}
+				}
+			}
+		}
+		reply(w, 200, map[string]any{"items": items})
+	})
+	mux.HandleFunc("DELETE /api/voicemails/{media}", func(w http.ResponseWriter, r *http.Request) {
+		var in struct {
+			Confirmed bool `json:"confirmed"`
+		}
+		if !decodeAction(w, r, &in) {
+			return
+		}
+		media := r.PathValue("media")
+		if !in.Confirmed || !voicemailFileName.MatchString(media+".amr") {
+			reply(w, 400, map[string]string{"error": "voicemail_delete_confirmation_required"})
+			return
+		}
+		s.notificationGate.Lock()
+		defer s.notificationGate.Unlock()
+		// Once explicitly confirmed, a disconnected browser must not interrupt the
+		// database tombstone / file cleanup sequence or cause automatic resubmits.
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 15*time.Second)
+		defer cancel()
+		err := s.Store.DeleteVoicemail(ctx, s.Config.DataDir, media)
+		if errors.Is(err, sql.ErrNoRows) {
+			reply(w, 404, map[string]string{"error": "voicemail_unavailable"})
+			return
+		}
+		if errors.Is(err, store.ErrVoicemailCleanup) {
+			s.Logs.Record("voicemail_delete_cleanup_failed", diagnostics.Fields{})
+			reply(w, 503, map[string]string{"error": "voicemail_cleanup_pending"})
+			return
+		}
+		if err != nil {
+			reply(w, 503, map[string]string{"error": "voicemail_delete_failed"})
+			return
+		}
+		s.Logs.Record("voicemail_deleted", diagnostics.Fields{})
+		reply(w, 200, map[string]bool{"deleted": true})
+	})
+	mux.HandleFunc("GET /api/voicemails/storage", func(w http.ResponseWriter, r *http.Request) {
+		used, files, err := s.Store.VoicemailDirectoryStats(r.Context(), s.Config.DataDir)
+		if err != nil {
+			reply(w, 503, map[string]string{"error": "voicemail_storage_unavailable"})
+			return
+		}
+		reply(w, 200, map[string]any{"files": files, "bytes": used, "limit_bytes": s.Config.VoicemailStorageLimit(), "limited": s.Config.VoicemailMode() == "public"})
+	})
 	mux.HandleFunc("GET /api/voicemails/unlinked", func(w http.ResponseWriter, r *http.Request) {
 		before, err := callCursor(r)
 		if err != nil {

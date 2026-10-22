@@ -86,7 +86,7 @@ onUnmounted(() => flow.dispose())
         }}</span>
       </div>
       <p class="muted tiny">
-        查看连接原因和命令阶段。最终发送状态请查看发件箱，通知任务请查看通知诊断。
+        查看连接原因和命令阶段。最终发送状态请查看发件箱，通知任务请查看“短信与通话推送”。
       </p>
       <div class="notification-summary">
         <span>日志级别 {{ view.data ? names[view.data.status.level] : '—' }}</span>

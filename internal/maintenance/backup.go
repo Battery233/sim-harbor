@@ -18,7 +18,7 @@ import (
 	"github.com/Battery233/sim-harbor/internal/store"
 )
 
-const MaxArchive int64 = store.BackupBytes + (16 << 20)
+const MaxArchive int64 = store.BackupBytes + (32 << 20)
 const manifestLimit int64 = 16 << 10
 
 var ErrInvalidBackup = errors.New("invalid_backup")
@@ -36,10 +36,11 @@ type Manifest struct {
 type Artifact struct {
 	Path     string
 	Manifest Manifest
+	SHA256   string
 	root     string
 }
 
-func (a *Artifact) Close() { os.RemoveAll(a.root) }
+func (a *Artifact) Close() error { return os.RemoveAll(a.root) }
 
 func Create(ctx context.Context, s *store.Store, parent string) (*Artifact, error) {
 	root, err := os.MkdirTemp(parent, ".sim-backup-")
@@ -107,7 +108,7 @@ func Create(ctx context.Context, s *store.Store, parent string) (*Artifact, erro
 	if err != nil {
 		return nil, err
 	}
-	size, _, err := fileDigest(a.Path)
+	size, digest, err := fileDigest(a.Path)
 	if err != nil {
 		return nil, err
 	}
@@ -118,6 +119,7 @@ func Create(ctx context.Context, s *store.Store, parent string) (*Artifact, erro
 		return nil, err
 	}
 	success = true
+	a.SHA256 = digest
 	return a, nil
 }
 
@@ -260,6 +262,15 @@ func databaseInfo(ctx context.Context, path string) (Manifest, error) {
 	}
 	if m.Schema >= 11 {
 		for _, q := range []string{`SELECT id,key,device_id,card_id,card_name,slot,phone,start_ts,connected_ts,end_ts,ended,connection_report,conflict,state,received_at FROM calls LIMIT 0`, `SELECT id,call_id,card_name,group_name,state,attempts,next_at,last_error,accepted_at FROM call_notifications LIMIT 0`} {
+			r, err := db.QueryContext(ctx, q)
+			if err != nil {
+				return m, ErrInvalidBackup
+			}
+			r.Close()
+		}
+	}
+	if m.Schema >= 20 {
+		for _, q := range []string{`SELECT voicemail_due_at FROM calls LIMIT 0`, `SELECT phase,created_at FROM call_notifications LIMIT 0`} {
 			r, err := db.QueryContext(ctx, q)
 			if err != nil {
 				return m, ErrInvalidBackup

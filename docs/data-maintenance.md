@@ -2,6 +2,8 @@
 
 从日常归档到本地/云端迁移，SIMHarbor 提供短信导出、一致备份、完整性检查和受控恢复，让数据随自己的部署选择流转。
 
+v1.1.1-rc.5 的录音等待及迟到通知使用 schema 20，ZIP 包含等待截止时间和两个通知阶段，格式仍为 1。恢复会清除旧等待截止时间并暂停旧任务，避免补推历史来电。已发布 v1.1.0 至 v1.1.1-rc.4 无法直接打开 schema 20；回退需恢复升级前备份。
+
 ## 选择导出或备份
 
 | 你的目的 | 使用入口 | 保存内容 |
@@ -11,7 +13,7 @@
 | 保留留言录音 | 单独复制数据目录内的 `voicemail/` | AMR 文件，恢复数据库后放回同名目录 |
 | 转移访问凭据和部署参数 | 单独私密备份配置 | `.env`、初始化 JSON、私有 Compose 及数据目录内 `system.private.json` |
 
-通话记录与发件箱随 ZIP 完整保存、恢复；JSON/CSV 入口用于收件短信。升级前在网页选择“数据库备份 → 生成并下载备份”。
+通话记录与发件箱随 ZIP 完整保存、恢复；JSON/CSV 入口用于收件短信。升级前在网页选择“数据库备份”，生成并下载，或保存到服务器后另行下载。
 
 ## 短信导出
 
@@ -21,11 +23,33 @@
 
 ## 一致备份
 
-在网页勾选私人数据保存确认，生成并下载备份 ZIP。应用通过 SQLite Online Backup API 取得包含业务库与 manifest 的一致快照，日常运行中即可完成备份，并纳入 WAL 中的有效数据。
+在“数据维护 → 数据库备份”选择保存方式并勾选私人数据保管确认：
+
+- **下载到浏览器**（默认）：服务器先生成 ZIP，再下载到电脑。支持文件选择器的浏览器可直接流式写入所选文件，其他浏览器收齐文件后交给普通下载，较大文件会占用更多浏览器内存。服务器临时副本保留 1 小时，下载中断可在列表重新下载同一份文件。
+- **保存到服务器**：后台生成后长期保留，页面关闭不影响任务。可从列表查看时间、大小和 SHA-256，下载或单独确认删除。它与应用在同一台机器上，重要备份应再下载另存。
+
+应用通过 SQLite Online Backup API 取得包含业务库与 manifest 的一致快照，日常运行中即可完成备份，并纳入 WAL 中的有效数据。两种方式使用相同 ZIP 格式，不包含 AMR 录音。
+
+### 文件位置与命名
+
+网页备份位于 `<data_directory>/backups/<备份ID>/`，目录权限为 `0700`、文件为 `0600`；Docker 中该目录位于现有数据卷内，显示的是容器路径，不会自动保存到 Compose 所在的宿主目录。ZIP 名称为 `sim-backup-YYYYMMDDTHHMMSSZ-<备份ID>.zip`，使用 UTC 时间和随机标识避免重名；包内 manifest 另有 `created_at`。
+
+此目录不通过静态网页公开，列表、下载、生成和删除都使用管理鉴权。应用只接受备份 ID，不接受网页指定任意服务器路径。目录内的 `metadata.json` 与 `.job.private.json` 是备份管理记录，不属于 ZIP 内容，不要手工修改或单独移动它们。
+
+### 中断、清理与容量
+
+- 同时只生成一份备份，生成超时为 5 分钟；提交结果不明时先刷新任务与文件列表，不自动重发。关闭页面只停止本页下载，后台生成继续。
+- ZIP 与元数据完整写入并同步磁盘后才发布到列表。生成失败或正常关机中断会清理临时目录；异常退出后，在下次应用启动时清理自有未完成目录并恢复任务状态。已完成的 ZIP 保留，任务不会自动重新生成。
+- 下载最多并行 2 份，每次最多 10 分钟。不支持字节断点续传；中断后重新下载现有文件，无需重新备份。下载中的文件不会因到期或删除操作被清理。支持直接写入文件时，失败下载会撤销临时写入；普通下载必须收齐声明长度才交给浏览器。
+- 浏览器临时副本从生成完成起保留 1 小时，到期后由应用定时或刷新列表时清理；应用停机时不执行清理，下一次启动再处理。服务器长期备份只由操作者确认删除，不按时间自动清理。
+- 服务器 ZIP 总容量默认 **2048 MiB**，最多 **20 份**（含临时副本）。可在“系统配置 → 数据备份”修改 `backup_max_storage_mib`，`0` 或缺省使用默认值，显式范围为 544～65536 MiB，保存并重启应用后生效。降低上限不会删除已有文件，超过限制时拒绝新增。
+- 开始前检查容量和剩余磁盘空间；生成时数据库快照与 ZIP 同时存在，需要额外临时空间。检查不能阻止其他进程消耗磁盘，实际写入不足仍会失败并清理本次临时文件，保留旧备份。清理或权限错误会显示失败，需核对目录，不能把临时文件当作已完成备份。
+
+完成服务器保存，或完整传输当前浏览器备份后，才可作为本次迁移确认的备份依据；应用重启、发送历史变化等仍会使确认失效。删除作为确认依据的服务器文件也会使该依据失效，需重新保存当前备份。
 
 ZIP 内含 `sim.db` 与 `manifest.json`；manifest 记录数据库摘要、版本和各类记录数量，便于恢复前核对。
 
-单份备份支持最大 256 MiB 的数据库和 272 MiB 的 ZIP，包含短信、来电、卡身份/偏好、发件历史与通知任务。`system.private.json`、环境变量和日志分别保存；完整迁移时一并私密备份配置与凭据。ZIP 未加密，SHA-256/CRC 用于完整性检查，保存建议见[安全说明](../SECURITY.md#私有数据与备份)。
+单份备份支持最大 512 MiB 的数据库和 544 MiB 的 ZIP，包含短信、来电、卡身份/偏好、发件历史与通知任务。`system.private.json`、环境变量和日志分别保存；完整迁移时一并私密备份配置与凭据。ZIP 未加密，SHA-256/CRC 用于完整性检查，保存建议见[安全说明](../SECURITY.md#私有数据与备份)。
 
 ## 检查与恢复：源码工具
 
@@ -35,9 +59,9 @@ v1.0.4 的分片修复使用 schema 17，完整备份额外包含分片上报与
 
 v1.1.0 将数据库继续升级至 schema 19，即使留言保持关闭也一样。schema 18 增加留言索引；schema 19 增加控制短信账本，账本不保存密码和短信正文。已发布的 v1.0.4 不能直接打开 schema 18 或 19。升级前保存一份当时版本能打开的 ZIP。需要退回 v1.0.4 时，用那份升级前备份恢复到单独目录，不要手改 `schema_version`，也不要用 v1.0.4 打开已经升级的库。升级流程见[v1.1.0 升级说明](releases.md#从-v104-升级到-v110)。
 
-ZIP 备份包含留言索引和这条账本，不包含 `voicemail/` 里的 AMR 文件。数据维护页在下载前写明这一点，完成提示也不表示录音已保存。只恢复 ZIP 会带回索引和来电关联，录音文件仍不在；播放或下载会说明这不是一次完整的录音恢复。要同时保留录音，把数据目录里的 `voicemail/` 另行复制，恢复数据库后再放回同名目录。已保存和尚未关联的录音都留在该目录，本版不会自动删除。schema 17 的 v1.0.4 备份可以恢复到这个版本，恢复后的库会继续迁到当前 schema。留言保持关闭也会完成这次升级。
+ZIP 备份包含留言索引和这条账本，不包含 `voicemail/` 里的 AMR 文件。数据维护页在下载前写明这一点，完成提示也不表示录音已保存。只恢复 ZIP 会带回索引和来电关联，录音文件仍不在；播放或下载会说明这不是一次完整的录音恢复。要同时保留录音，把数据目录里的 `voicemail/` 另行复制，恢复数据库后再放回同名目录。已保存和尚未关联的录音都留在该目录，只有操作者逐条确认后才删除；本版不按容量或时间自动删除录音。schema 17 的 v1.0.4 备份可以恢复到这个版本，恢复后的库会继续迁到当前 schema。留言保持关闭也会完成这次升级。
 
-`1.1.1-rc.4` 候选版可读取 v1.1.0 原配置，沿用 schema 19 和数据库 ZIP 格式，无新增迁移。公网功能会使用新版配置字段，回退前按[公网配置兼容性](releases.md#公网录音配置的兼容性)处理。容量提醒进度文件 `voicemail-capacity.private.json` 需随私有数据目录另存，不包含在 ZIP 中。下方 Docker 维护示例随当前源码使用候选镜像；维护既有实例时，选择与该实例版本和数据库兼容的镜像，见[候选版说明](releases.md#从-v110-试用-v111-rc4)。
+`1.1.1-rc.5` 候选版可读取 v1.1.0 至 rc.4 原配置，首次启动自动迁移到 schema 20；数据库 ZIP 格式仍为 1。旧版不能直接打开新库，回退需使用升级前数据库，并移除旧程序不识别的可选配置字段。公网功能会使用新版配置字段，回退前按[公网配置兼容性](releases.md#公网录音配置的兼容性)处理。容量提醒进度文件 `voicemail-capacity.private.json` 需随私有数据目录另存，不包含在 ZIP 中。下方 Docker 维护示例随当前源码使用候选镜像；维护既有实例时，选择与该实例版本和数据库兼容的镜像，见[候选版说明](releases.md#从-v110-或-rc4-升级到-v111-rc5)。
 
 原数据目录升级由新版应用首次启动时完成，已有迁移确认保留；`restore` 则建立新的恢复身份并重新启用外发保护，两种操作不同。备份与检查不会迁移原数据库，恢复会迁移所选副本。从 v1.0.2 升级至 v1.0.3 不迁移数据库；各版本的配置兼容性与升级方式见[版本维护](releases.md#已有实例升级)。
 
@@ -80,7 +104,7 @@ GOTOOLCHAIN=local go run ./cmd/maintain backup \
 docker run --rm --network none --read-only \
   --tmpfs /data:rw,uid=65532,gid=65532,mode=0700,size=640m \
   --mount type=bind,src=/srv/sim-backups,dst=/backup,readonly \
-  --entrypoint /app/sim-data sim-harbor:1.1.1-rc.4 \
+  --entrypoint /app/sim-data sim-harbor:1.1.1-rc.5 \
   inspect -backup /backup/sim-backup.zip
 ```
 
@@ -96,7 +120,7 @@ docker volume inspect sim_sim-data --format '{{.Name}}'
 docker run --rm --network none --read-only \
   --mount type=bind,src=/srv/sim-backups,dst=/backup,readonly \
   --mount type=volume,src=sim_sim-data,dst=/data \
-  --entrypoint /app/sim-data sim-harbor:1.1.1-rc.4 \
+  --entrypoint /app/sim-data sim-harbor:1.1.1-rc.5 \
   restore -backup /backup/sim-backup.zip \
   -to /data/restored-instance \
   -confirm-archive REPLACE_WITH_ARCHIVE_SHA256
@@ -106,7 +130,7 @@ docker run --rm --network none --read-only \
 
 ### 停服备份
 
-网页暂时不可用或正式迁移需要最终快照时，可以用源实例对应版本的镜像执行停服备份。下面以 `sim-harbor:1.1.1-rc.4`、数据目录 `/data` 为例；如果实际目录为 `/data/storage`，调整 `-data-directory`。宿主 `/srv/sim-backups` 需允许容器 UID 65532 写入，输出文件使用尚不存在的新名称。
+网页暂时不可用或正式迁移需要最终快照时，可以用源实例对应版本的镜像执行停服备份。下面以 `sim-harbor:1.1.1-rc.5`、数据目录 `/data` 为例；如果实际目录为 `/data/storage`，调整 `-data-directory`。宿主 `/srv/sim-backups` 需允许容器 UID 65532 写入，输出文件使用尚不存在的新名称。
 
 先沿用原项目名及完整 Compose 文件停止应用；这里展示基础安装参数：
 
@@ -121,7 +145,7 @@ docker compose --env-file .env -p sim \
 docker run --rm --network none --read-only \
   --mount type=volume,src=sim_sim-data,dst=/data \
   --mount type=bind,src=/srv/sim-backups,dst=/backup \
-  --entrypoint /app/sim-data sim-harbor:1.1.1-rc.4 \
+  --entrypoint /app/sim-data sim-harbor:1.1.1-rc.5 \
   backup -data-directory /data -output /backup/sim-backup-final.zip
 ```
 

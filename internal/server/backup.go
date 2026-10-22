@@ -26,6 +26,9 @@ func (s *Server) downloadBackup(w http.ResponseWriter, r *http.Request) {
 		reply(w, 400, map[string]string{"error": "backup_confirmation_required"})
 		return
 	}
+	if s.backupReady(w) == nil {
+		return
+	}
 	if !s.backupGate.TryLock() {
 		reply(w, 409, map[string]string{"error": "backup_in_progress"})
 		return
@@ -71,7 +74,8 @@ func (s *Server) downloadBackup(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/zip")
 	w.Header().Set("Cache-Control", "no-store, no-transform")
-	w.Header().Set("Content-Disposition", `attachment; filename="sim-backup.zip"`)
+	stamp, _ := time.Parse(time.RFC3339, a.Manifest.CreatedAt)
+	w.Header().Set("Content-Disposition", `attachment; filename="sim-backup-`+stamp.UTC().Format("20060102T150405Z")+`-`+tid()+`.zip"`)
 	w.Header().Set("Content-Length", strconv.FormatInt(info.Size(), 10))
 	digest := sha256.New()
 	n, copyErr := io.Copy(w, io.TeeReader(file, digest))

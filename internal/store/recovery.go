@@ -7,7 +7,7 @@ import (
 	"encoding/hex"
 )
 
-const SchemaVersion = 19
+const SchemaVersion = 20
 const recoverySchema = `CREATE TABLE IF NOT EXISTS recovery_guard(id INTEGER PRIMARY KEY CHECK(id=1),restored_at INTEGER NOT NULL,archive_sha256 TEXT NOT NULL);
 DELETE FROM schema_version; INSERT INTO schema_version VALUES(5);`
 
@@ -51,7 +51,7 @@ func (s *Store) HoldRestoredData(ctx context.Context, archive string, now int64)
 	if _, e = tx.ExecContext(ctx, `INSERT OR IGNORE INTO call_notifications(call_id,card_name,group_name,state,last_error,kind) SELECT c.id,c.card_name,coalesce(cards.group_name,'来源未确认'),'restore_held','restored_notification_held','timeout' FROM calls c LEFT JOIN cards ON cards.id=c.card_id WHERE c.timeout_at>0 AND c.ended=0`); e != nil {
 		return e
 	}
-	if _, e = tx.ExecContext(ctx, `UPDATE calls SET timeout_at=0`); e != nil {
+	if _, e = tx.ExecContext(ctx, `UPDATE calls SET timeout_at=0,voicemail_due_at=-1`); e != nil {
 		return e
 	}
 	return tx.Commit()

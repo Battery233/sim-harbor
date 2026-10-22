@@ -143,3 +143,78 @@ func TestUnlinkedVoicemailMissingUnsafeFilesAndBoundedPagination(t *testing.T) {
 		t.Fatal("invalid older page")
 	}
 }
+
+func TestRecordingStorageCountsPhysicalFilesAndRequiresAuth(t *testing.T) {
+	s, _ := fixture(t, 1, func(c *config.Config) { c.AdminToken = "SYNTHETIC-MANAGEMENT-ACCESS-TOKEN" })
+	get := func(auth string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("GET", "http://example.invalid/api/voicemails/storage", nil)
+		if auth != "" {
+			r.Header.Set("Authorization", auth)
+		}
+		w := httptest.NewRecorder()
+		s.Handler().ServeHTTP(w, r)
+		return w
+	}
+	if w := get(""); w.Code != 401 {
+		t.Fatal("public stats", w.Code)
+	}
+	dir := filepath.Join(s.Config.DataDir, "voicemail")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range map[string]string{"one.amr": "#!AMR\nDATA", "interrupted.partial": "PART"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	w := get("Bearer " + s.Config.AdminToken)
+	var stats struct {
+		Files int   `json:"files"`
+		Bytes int64 `json:"bytes"`
+		Limit int64 `json:"limit_bytes"`
+	}
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &stats) != nil || stats.Files != 2 || stats.Bytes != 14 || stats.Limit != 512<<20 {
+		t.Fatal("wrong directory usage", w.Code, w.Body.String())
+	}
+}
+
+func TestRecordingActivitySeparatesReportsFromFileAvailability(t *testing.T) {
+	s, _ := fixture(t, 0, func(c *config.Config) { c.AdminToken = "SYNTHETIC-MANAGEMENT-ACCESS-TOKEN" })
+	if _, err := s.Store.DB.Exec(`INSERT INTO calls(key,device_id,slot,phone,start_ts,connected_ts,end_ts,ended,state,received_at) VALUES('SYNTHETIC-ACTIVITY','SIM-TEST',1,'PRIVATE-SYNTHETIC-CALLER',1000,1002,1010,1,'answered',1011)`); err != nil {
+		t.Fatal(err)
+	}
+	media, _, _, err := s.Store.SaveVoicemail(context.Background(), s.Config.DataDir, []byte("#!AMR\nSYNTHETIC"), 1, "PRIVATE-SYNTHETIC-CALLER", 1000, 1020)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w := request(s, "GET", "http://example.invalid/api/voicemails/activity", "", ""); w.Code != 401 {
+		t.Fatal(w.Code)
+	}
+	check := func(available, deleted bool) {
+		t.Helper()
+		w := request(s, "GET", "http://example.invalid/api/voicemails/activity", "Bearer "+s.Config.AdminToken, "")
+		var data struct {
+			Items []struct {
+				Slot      int   `json:"slot"`
+				Connected int64 `json:"connected_at"`
+				Available bool  `json:"recording_available"`
+				Deleted   bool  `json:"recording_deleted"`
+			} `json:"items"`
+		}
+		if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &data) != nil || len(data.Items) != 2 || data.Items[0].Connected != 1002 || data.Items[0].Available != available || data.Items[0].Deleted != deleted {
+			t.Fatal("activity mismatch", w.Code, w.Body.String())
+		}
+		if strings.Contains(w.Body.String(), "PRIVATE-SYNTHETIC") {
+			t.Fatal("caller leaked")
+		}
+	}
+	check(true, false)
+	if err = os.Remove(filepath.Join(s.Config.DataDir, "voicemail", media+".amr")); err != nil {
+		t.Fatal(err)
+	}
+	check(false, false)
+	if err = s.Store.DeleteVoicemail(context.Background(), s.Config.DataDir, media); err != nil {
+		t.Fatal(err)
+	}
+	check(false, true)
+}

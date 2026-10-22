@@ -42,14 +42,15 @@ type Call struct {
 	NotificationKind  string `json:"notification_kind"`
 	VoicemailID       int64  `json:"voicemail_id,omitempty"`
 	VoicemailBytes    int64  `json:"voicemail_bytes,omitempty"`
+	VoicemailMediaID  string `json:"voicemail_media_id,omitempty"`
 	TimeoutAt         int64  `json:"-"`
 	Ended             bool   `json:"-"`
 	ConnectionReport  int    `json:"-"`
 	Conflict          bool   `json:"-"`
 }
 
-const callColumns = `c.id,coalesce(c.card_id,''),c.card_name,c.slot,c.phone,c.start_ts,c.connected_ts,c.end_ts,c.ended,c.connection_report,c.conflict,c.state,coalesce(n.state,'not_queued'),coalesce(n.attempts,0),coalesce(n.last_error,''),coalesce(n.accepted_at,0),c.received_at,coalesce(n.kind,''),c.timeout_at,coalesce(v.id,0),coalesce(v.size,0)`
-const callJoin = ` FROM calls c LEFT JOIN call_notifications n ON n.call_id=c.id LEFT JOIN voicemails v ON v.call_id=c.id `
+const callColumns = `c.id,coalesce(c.card_id,''),c.card_name,c.slot,c.phone,c.start_ts,c.connected_ts,c.end_ts,c.ended,c.connection_report,c.conflict,c.state,coalesce(n.state,'not_queued'),coalesce(n.attempts,0),coalesce(n.last_error,''),coalesce(n.accepted_at,0),c.received_at,coalesce(n.kind,''),c.timeout_at,coalesce(v.id,0),coalesce(v.size,0),coalesce(v.media_id,'')`
+const callJoin = ` FROM calls c LEFT JOIN call_notifications n ON n.id=(SELECT max(cn.id) FROM call_notifications cn WHERE cn.call_id=c.id) LEFT JOIN voicemails v ON v.call_id=c.id AND v.stored_name<>'' `
 
 // Search the stored caller and the labels displayed by the shared UI.
 // Bound instr arguments keep wildcard and SQL-like input literal.
@@ -57,7 +58,7 @@ const callSearchFilter = ` (?='' OR instr(lower(c.phone),lower(?))>0 OR instr(CA
 
 func scanCall(row scanner, now int64, extra ...any) (Call, error) {
 	var c Call
-	fields := []any{&c.ID, &c.CardID, &c.CardName, &c.Slot, &c.Phone, &c.StartTS, &c.ConnectedTS, &c.EndTS, &c.Ended, &c.ConnectionReport, &c.Conflict, &c.State, &c.NotificationState, &c.Failures, &c.LastError, &c.AcceptedAt, &c.ReceivedAt, &c.NotificationKind, &c.TimeoutAt, &c.VoicemailID, &c.VoicemailBytes}
+	fields := []any{&c.ID, &c.CardID, &c.CardName, &c.Slot, &c.Phone, &c.StartTS, &c.ConnectedTS, &c.EndTS, &c.Ended, &c.ConnectionReport, &c.Conflict, &c.State, &c.NotificationState, &c.Failures, &c.LastError, &c.AcceptedAt, &c.ReceivedAt, &c.NotificationKind, &c.TimeoutAt, &c.VoicemailID, &c.VoicemailBytes, &c.VoicemailMediaID}
 	err := row.Scan(append(fields, extra...)...)
 	if !c.Ended && (now < c.StartTS || (c.TimeoutAt > 0 && now >= c.TimeoutAt) || (c.TimeoutAt == 0 && now-c.StartTS > 300)) {
 		c.State = "unknown"
@@ -168,6 +169,12 @@ func ingestCall(ctx context.Context, tx *sql.Tx, e protocol.Event, raw []byte, n
 	if err != nil {
 		return err
 	}
+	if voicemail && notify && c.State == "answered" && previousState != "answered" {
+		if _, err = tx.ExecContext(ctx, `UPDATE calls SET voicemail_due_at=CASE WHEN voicemail_due_at=0 THEN ? ELSE voicemail_due_at END WHERE id=? AND NOT EXISTS(SELECT 1 FROM voicemails WHERE call_id=?)`, now+VoicemailWaitSeconds, c.ID, c.ID); err != nil {
+			return err
+		}
+	}
+
 	if notify {
 		// A start received while muted stays muted even if enabled before its end.
 		kind := "timeout"
@@ -178,8 +185,14 @@ func ingestCall(ctx context.Context, tx *sql.Tx, e protocol.Event, raw []byte, n
 			return err
 		}
 	}
-	if voicemail {
-		return nil
+	// A voicemail slot can still receive calls that hang up before answering.
+	// Only answered/uncertain calls wait for a recording; confirmed missed calls
+	// retain the normal single-notification path.
+	if voicemail && c.State != "missed" {
+		// A later conflicting/connected report can invalidate a queued missed
+		// reminder. Leave actual recording notifications on their own path.
+		_, err = tx.ExecContext(ctx, `UPDATE call_notifications SET state='canceled',last_error='call_state_uncertain' WHERE call_id=? AND kind='missed' AND state='pending'`, c.ID)
+		return err
 	}
 	if c.State != "missed" {
 		_, err = tx.ExecContext(ctx, `UPDATE call_notifications SET state='canceled',last_error='call_state_uncertain' WHERE call_id=? AND state='pending' AND (kind='missed' OR ?)`, c.ID, c.Ended || c.ConnectedTS > 0 || c.Conflict)
@@ -254,7 +267,7 @@ func (s *Store) Call(ctx context.Context, id, now int64) (Call, error) {
 
 func (s *Store) nextCallNotification(ctx context.Context) (Notification, error) {
 	var n Notification
-	err := s.DB.QueryRowContext(ctx, `SELECT n.id,c.id,n.attempts,c.slot,c.phone,c.start_ts,CASE WHEN n.kind='missed' THEN c.end_ts-c.start_ts ELSE 0 END,n.card_name,n.group_name,n.kind FROM call_notifications n JOIN calls c ON c.id=n.call_id LEFT JOIN cards card ON card.id=c.card_id WHERE coalesce(card.notification_enabled,1)=1 AND n.state='pending' AND (n.kind='voicemail' OR c.state='missed' OR (n.kind='timeout' AND c.ended=0 AND c.connected_ts=0 AND c.conflict=0)) AND n.next_at<=? ORDER BY n.id LIMIT 1`, time.Now().Unix()).Scan(&n.ID, &n.CallID, &n.Attempts, &n.Slot, &n.Phone, &n.CallStartTS, &n.RingSeconds, &n.CardName, &n.CardGroup, &n.CallKind)
+	err := s.DB.QueryRowContext(ctx, `SELECT n.id,c.id,n.attempts,c.slot,c.phone,c.start_ts,CASE WHEN n.kind='missed' THEN c.end_ts-c.start_ts ELSE 0 END,n.card_name,n.group_name,n.kind FROM call_notifications n JOIN calls c ON c.id=n.call_id LEFT JOIN cards card ON card.id=c.card_id WHERE coalesce(card.notification_enabled,1)=1 AND n.state='pending' AND (n.kind IN ('voicemail','voicemail_late') OR (n.kind='voicemail_missing' AND c.state='answered' AND NOT EXISTS(SELECT 1 FROM voicemails v WHERE v.call_id=c.id)) OR c.state='missed' OR (n.kind='timeout' AND c.ended=0 AND c.connected_ts=0 AND c.conflict=0)) AND n.next_at<=? ORDER BY n.id LIMIT 1`, time.Now().Unix()).Scan(&n.ID, &n.CallID, &n.Attempts, &n.Slot, &n.Phone, &n.CallStartTS, &n.RingSeconds, &n.CardName, &n.CardGroup, &n.CallKind)
 	return n, err
 }
 

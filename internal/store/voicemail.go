@@ -57,7 +57,7 @@ type VoicemailFile struct {
 
 func (s *Store) VoicemailFile(ctx context.Context, callID int64) (VoicemailFile, error) {
 	var file VoicemailFile
-	err := s.DB.QueryRowContext(ctx, `SELECT stored_name, size FROM voicemails WHERE call_id=?`, callID).Scan(&file.Name, &file.Size)
+	err := s.DB.QueryRowContext(ctx, `SELECT stored_name, size FROM voicemails WHERE call_id=? AND stored_name<>''`, callID).Scan(&file.Name, &file.Size)
 	return file, err
 }
 
@@ -179,6 +179,14 @@ func (s *Store) VoicemailUsage(ctx context.Context, dataDir string) (int64, erro
 	return used, err
 }
 
+// VoicemailDirectoryStats counts physical files, including interrupted and
+// unindexed files, using the same rules as quota enforcement.
+func (s *Store) VoicemailDirectoryStats(ctx context.Context, dataDir string) (int64, int, error) {
+	s.voicemailMu.Lock()
+	defer s.voicemailMu.Unlock()
+	return scanVoicemailUsage(ctx, dataDir)
+}
+
 func scanVoicemailUsage(ctx context.Context, dataDir string) (used int64, entries int, err error) {
 	dir, err := os.Open(filepath.Join(dataDir, "voicemail"))
 	if errors.Is(err, os.ErrNotExist) {
@@ -223,10 +231,13 @@ func (s *Store) linkStoredVoicemail(ctx context.Context, mediaID, phone string, 
 	}
 	defer tx.Rollback()
 	var rowID, slot, start int64
-	var storedPhone string
-	err = tx.QueryRowContext(ctx, `SELECT id, slot, phone, start_ts FROM voicemails WHERE media_id=?`, mediaID).Scan(&rowID, &slot, &storedPhone, &start)
+	var storedPhone, storedName string
+	err = tx.QueryRowContext(ctx, `SELECT id, slot, phone, start_ts, stored_name FROM voicemails WHERE media_id=?`, mediaID).Scan(&rowID, &slot, &storedPhone, &start, &storedName)
 	if err != nil {
 		return err
+	}
+	if storedName == "" {
+		return nil
 	}
 	if strings.TrimSpace(storedPhone) == "" && strings.TrimSpace(phone) != "" {
 		if _, err = tx.ExecContext(ctx, `UPDATE voicemails SET phone=? WHERE id=? AND phone=''`, strings.TrimSpace(phone), rowID); err != nil {
@@ -244,7 +255,7 @@ func relinkVoicemails(ctx context.Context, tx *sql.Tx, slot int, now int64) erro
 	if slot < 1 || slot > 2 {
 		return nil
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT id, phone, start_ts FROM voicemails WHERE call_id IS NULL AND slot=?`, slot)
+	rows, err := tx.QueryContext(ctx, `SELECT id, phone, start_ts FROM voicemails WHERE stored_name<>'' AND call_id IS NULL AND slot=?`, slot)
 	if err != nil {
 		return err
 	}
@@ -282,7 +293,7 @@ func (s *Store) reconcileVoicemails(now int64) error {
 		return err
 	}
 	defer tx.Rollback()
-	rows, err := tx.QueryContext(ctx, `SELECT id, slot, phone, start_ts FROM voicemails WHERE call_id IS NULL`)
+	rows, err := tx.QueryContext(ctx, `SELECT id, slot, phone, start_ts FROM voicemails WHERE stored_name<>'' AND call_id IS NULL`)
 	if err != nil {
 		return err
 	}
@@ -318,7 +329,7 @@ func linkVoicemail(ctx context.Context, tx *sql.Tx, rowID int64, slot int, phone
 	if err != nil || !ok {
 		return err
 	}
-	res, err := tx.ExecContext(ctx, `UPDATE voicemails SET call_id=? WHERE id=? AND call_id IS NULL AND NOT EXISTS(SELECT 1 FROM voicemails o WHERE o.call_id=? AND o.id<>?)`, callID, rowID, callID, rowID)
+	res, err := tx.ExecContext(ctx, `UPDATE voicemails SET call_id=? WHERE id=? AND stored_name<>'' AND call_id IS NULL AND NOT EXISTS(SELECT 1 FROM voicemails o WHERE o.call_id=? AND o.id<>?)`, callID, rowID, callID, rowID)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE") || strings.Contains(err.Error(), "constraint") {
 			return nil
@@ -333,23 +344,7 @@ func linkVoicemail(ctx context.Context, tx *sql.Tx, rowID int64, slot int, phone
 	if err != nil {
 		return err
 	}
-	held := 0
-	if blocked {
-		held = 1
-	}
-	res, err = tx.ExecContext(ctx, `UPDATE call_notifications SET kind='voicemail', state=CASE WHEN ?=1 THEN 'restore_held' ELSE state END, last_error=CASE WHEN ?=1 THEN 'restored_notification_held' ELSE last_error END WHERE call_id=? AND state='pending' AND kind IN ('missed','timeout')`, held, held, callID)
-	if err != nil {
-		return err
-	}
-	changed, err := res.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if changed > 0 {
-		return nil
-	}
-	_, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO call_notifications(call_id,card_name,group_name,state,last_error,kind) SELECT c.id,c.card_name,coalesce(cards.group_name,'来源未确认'),CASE WHEN coalesce(cards.notification_enabled,1)=0 THEN 'canceled' WHEN ?=1 THEN 'restore_held' ELSE 'pending' END,CASE WHEN ?=1 AND coalesce(cards.notification_enabled,1)=1 THEN 'restored_notification_held' ELSE '' END,'voicemail' FROM calls c LEFT JOIN cards ON cards.id=c.card_id WHERE c.id=?`, held, held, callID)
-	return err
+	return queueLinkedVoicemail(ctx, tx, callID, now, blocked)
 }
 
 func chooseVoicemailCall(ctx context.Context, tx *sql.Tx, slot int, phone string, start int64) (int64, bool, error) {

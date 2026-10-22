@@ -38,6 +38,7 @@
 | `tcp_address` | 板子监听；容器中通常为 `0.0.0.0:9000` |
 | `data_directory` | SQLite、统一配置与日志所在目录；容器全新部署 `/data` |
 | `static_directory` | 前端产物目录；容器 `/app/web/dist`，源码 `web/dist` |
+| `backup_max_storage_mib` | 网页服务器备份 ZIP 总容量，缺省或 `0` 为 2048 MiB，显式范围 544～65536；最多 20 份，满后拒绝新增，不自动删除长期备份。保存并重启生效，见[备份管理](data-maintenance.md#中断清理与容量) |
 | `device_id` | 允许接入的板子编号，配合来源规则与加密参数使用 |
 | `device_cidrs` | TCP 来源网段，局域网录音上传也使用此规则；单 IPv4 用 `/32`，IPv6 用 `/128` |
 | `device_allowlist_enabled` | 启用后按 `device_cidrs` 筛选 TCP 连接来源 |
@@ -64,6 +65,8 @@
 初始化环境变量名为 `SIM_ADMIN_TOKEN`、`SIM_AES_KEY`、`SIM_AES_IV`、`SIM_BARK_KEY`，JSON 通过对应 `*_env` 字段引用。管理员 Token 至少 24 字符。
 
 v1.1.0 新增的留言字段不要求旧实例补填；缺少 `voicemail_enabled` 时默认关闭，其他业务配置继续使用原值。各部署示例均显式关闭留言。v1.1.1-rc.4 可主动开启公网接收，既有实例不会因此自动改变模式或板子设置。配置兼容不表示数据库可直接降级，schema 19 的备份与回退要求见[升级说明](releases.md#从-v104-升级到-v110)。
+
+v1.1.1-rc.5 的备份管理功能保持旧配置可读；设置非零 `backup_max_storage_mib` 后，回退到不认识该字段的旧程序前需从私有配置中移除该字段。备份功能本身不改变 ZIP 格式，但超过旧上限的备份需要用新版维护工具校验和恢复。本版录音等待/迟到通知会将数据库迁至 schema 20，不新增必填配置；旧程序不能直接打开该数据库。
 
 ### 自定义鉴权请求头
 

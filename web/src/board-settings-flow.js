@@ -121,18 +121,18 @@ export function voicemailSlotEvidence(slot, channel) {
   const sms = channel === 'sms'
   if (slot?.mode == null && slot?.tts == null)
     return sms
-      ? `卡槽 ${slot.slot}：接听方式和板子提示语尚未确认`
+      ? `卡槽 ${slot.slot}：需在板子后台核对`
       : `卡槽 ${slot.slot}：未读到接听方式和板子提示语`
   const mode =
     slot.mode == null
       ? sms
-        ? '接听方式尚未确认'
+        ? '接听方式需后台核对'
         : '接听方式未读到'
       : names[slot.mode] || '接听方式待核对'
   const preset =
     slot.tts == null
       ? sms
-        ? '板子提示语尚未确认'
+        ? '预设提示语需后台核对'
         : '板子提示语未读到'
       : slot.tts
         ? '板子上有已保存的提示语'

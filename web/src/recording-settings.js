@@ -26,6 +26,7 @@ export function recordingEnableProblem(saved, edited) {
 export function normalizedSettingsValues(values) {
   return {
     ...values,
+    backup_max_storage_mib: values.backup_max_storage_mib || 0,
     device_cidrs: values.device_cidrs || [],
     admin_token_header: values.admin_token_header || '',
     device_allowlist_enabled: values.device_allowlist_enabled !== false,
@@ -43,11 +44,15 @@ export function settingsSectionValues(saved, edited, section) {
   return result
 }
 
-export function uploadAddressView(raw) {
+export function uploadAddressView(raw, detailed = false) {
   if (!raw) return '未设置'
   try {
     const url = new URL(raw)
-    return `${url.protocol}//${url.host}/…`
+    const path =
+      detailed && /^\/api\/voicemail\/amr\/[a-f0-9]{32,64}$/.test(url.pathname)
+        ? '/api/voicemail/amr/…'
+        : '/…'
+    return `${url.protocol}//${url.host}${path}`
   } catch {
     return '地址已设置（无法展示）'
   }

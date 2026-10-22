@@ -23,12 +23,18 @@ export function ringingLabel(call) {
 }
 
 export function callPushLabel(call) {
+  if (call?.notification_state === 'canceled' && call?.notification_error === 'voicemail_deleted')
+    return '录音已删除，留言提醒已取消'
   const fallback =
     call?.notification_kind === 'timeout'
       ? ' · 兜底提醒'
       : call?.notification_kind === 'voicemail'
         ? ' · 留言'
-        : ''
+        : call?.notification_kind === 'voicemail_missing'
+          ? ' · 录音未收到'
+          : call?.notification_kind === 'voicemail_late'
+            ? ' · 迟到录音已收到'
+            : ''
   return (
     ({
       sent: '推送成功',
