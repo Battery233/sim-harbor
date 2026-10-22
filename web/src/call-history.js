@@ -42,7 +42,9 @@ export function callPushLabel(call) {
       restore_held: '恢复后待核对',
       canceled: '提醒已取消 · 来电待核对',
       not_queued: '未生成提醒',
-    }[call?.notification_state] || '未生成提醒') + fallback
+    }[call?.notification_state] || '未生成提醒') +
+    fallback +
+    (call?.voicemail_deleted ? ' · 录音已删除' : '')
   )
 }
 
@@ -55,6 +57,7 @@ function checkedCall(call, id) {
     ![1, 2].includes(call.slot) ||
     typeof call.phone !== 'string' ||
     !Object.hasOwn(callStates, call.state) ||
+    (call.voicemail_deleted != null && typeof call.voicemail_deleted !== 'boolean') ||
     (call.voicemail_id != null &&
       (!Number.isSafeInteger(call.voicemail_id) || call.voicemail_id <= 0)) ||
     (call.voicemail_bytes != null &&

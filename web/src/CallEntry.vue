@@ -72,7 +72,7 @@ function date(ts) {
         @changed="onRecordingChanged(call, $event)"
       />
       <span class="muted"
-        >{{ call.voicemail_bytes }} 字节。下载仍是原始
+        >{{ (call.voicemail_bytes / 1024).toFixed(1) }} KB（1 KB = 1024 字节）。下载仍是原始
         AMR。若提示录音文件不在，说明只恢复了索引，需要把 voicemail/ 目录单独放回。</span
       >
     </div>

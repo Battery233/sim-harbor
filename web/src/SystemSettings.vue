@@ -33,18 +33,6 @@ let stopped = false,
   poll
 const groups = [
   {
-    title: '数据备份',
-    fields: [
-      [
-        'backup_max_storage_mib',
-        '服务器备份总容量（MiB，544～65536；0 使用默认 2048）',
-        'number',
-        0,
-        65536,
-      ],
-    ],
-  },
-  {
     title: '管理访问',
     fields: [['admin_token_header', '自定义鉴权请求头（留空使用 Authorization）', 'text']],
   },
@@ -72,6 +60,10 @@ const groups = [
       ['diagnostics_limit', '网页最近诊断条数', 'number', 100, 5000],
       ['log_retention_days', '磁盘日志保留天数', 'number', 1, 30],
     ],
+  },
+  {
+    title: '服务器本地备份',
+    fields: [['backup_max_storage_mib', '服务器本地备份上限（MiB）', 'number', 0, 65536]],
   },
 ]
 const connectionFields = [
@@ -367,6 +359,12 @@ onUnmounted(() => {
                 "
             /></label>
           </div>
+          <p v-if="group.title === '服务器本地备份'" class="tiny muted">
+            0 使用默认 2048 MiB；也可设为 544～65536 MiB。限制应用服务器上 backups/ 目录中所有 ZIP
+            的总大小，含长期备份和浏览器下载临时副本；最多 20
+            份，达到上限后拒绝新增，不自动删除长期备份。不限制录音目录或浏览器已下载的文件，ZIP
+            不包含录音。
+          </p>
           <p v-if="group.title === '管理网址与时间'" class="tiny muted">
             记录解析与统计时区只影响管理应用，不修改板子的时钟或时区。
           </p>

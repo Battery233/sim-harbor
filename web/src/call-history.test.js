@@ -207,3 +207,35 @@ test('缺失与迟到录音的通知状态各有独立文案', () => {
     '等待推送 · 迟到录音已收到',
   )
 })
+
+test('删除录音后保留成功通知历史，和取消未发送通知分开表示', () => {
+  assert.equal(
+    callPushLabel({
+      notification_state: 'sent',
+      notification_kind: 'voicemail',
+      voicemail_deleted: true,
+    }),
+    '推送成功 · 留言 · 录音已删除',
+  )
+  assert.equal(
+    callPushLabel({
+      notification_state: 'sent',
+      notification_kind: 'voicemail_late',
+      voicemail_deleted: true,
+    }),
+    '推送成功 · 迟到录音已收到 · 录音已删除',
+  )
+  assert.equal(
+    callPushLabel({
+      notification_state: 'canceled',
+      notification_kind: 'voicemail',
+      notification_error: 'voicemail_deleted',
+      voicemail_deleted: true,
+    }),
+    '录音已删除，留言提醒已取消',
+  )
+  assert.equal(
+    callPushLabel({ notification_state: 'sent', notification_kind: 'voicemail' }),
+    '推送成功 · 留言',
+  )
+})

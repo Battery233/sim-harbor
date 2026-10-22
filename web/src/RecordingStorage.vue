@@ -7,9 +7,8 @@ const stats = ref(null),
 let stopped = false,
   timer
 function size(bytes) {
-  if (bytes < 1024) return bytes + ' B'
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KiB'
-  return (bytes / 1024 / 1024).toFixed(1) + ' MiB'
+  if (bytes > 0 && bytes < 0.01 * 1024 * 1024) return '<0.01 MiB'
+  return (bytes / 1024 / 1024).toFixed(2) + ' MiB'
 }
 async function load() {
   if (busy.value || stopped) return

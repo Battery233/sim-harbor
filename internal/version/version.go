@@ -1,4 +1,4 @@
 package version
 
 // Version is the application release, independent of the database schema.
-const Version = "1.1.1-rc.5"
+const Version = "1.1.1"

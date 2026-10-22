@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -14,7 +15,77 @@ import (
 
 	"github.com/Battery233/sim-harbor/internal/config"
 	"github.com/Battery233/sim-harbor/internal/maintenance"
+	"github.com/Battery233/sim-harbor/internal/protocol"
+	"github.com/Battery233/sim-harbor/internal/store"
 )
+
+func TestManagedBackupDownloadRestoreAndSeparateAudio(t *testing.T) {
+	for _, destination := range []string{"browser", "server"} {
+		t.Run(destination, func(t *testing.T) {
+			s, _ := fixture(t, 0, func(c *config.Config) { c.AdminToken = "SYNTHETIC-BACKUP-RESTORE-TOKEN" })
+			ctx := t.Context()
+			connected := protocol.Number(1002)
+			call := protocol.Event{DeviceID: s.Config.DeviceID, Type: 603, Slot: 1, Phone: "SYNTHETIC-CALLER", ICCID: "SYNTHETIC-CARD", TelStartTS: 1000, TelConnectedTS: &connected, TelEndTS: 1010}
+			raw, _ := json.Marshal(call)
+			if err := s.Store.Ingest(ctx, call, raw, false); err != nil {
+				t.Fatal(err)
+			}
+			audio := []byte("#!AMR\nSYNTHETIC-SEPARATE-AUDIO")
+			media, _, _, err := s.Store.SaveVoicemail(ctx, s.Config.DataDir, audio, 1, call.Phone, 1000, 1011)
+			if err != nil {
+				t.Fatal(err)
+			}
+			file := generateTestBackup(t, s, s.Config.AdminToken, strings.Repeat("d", 32), destination)
+			w := backupAPI(s, "GET", "/backups/"+file.ID+"/download", "", s.Config.AdminToken)
+			if w.Code != 200 || w.Body.Len() != int(file.Bytes) {
+				t.Fatal("managed download failed", w.Code)
+			}
+			archive := filepath.Join(t.TempDir(), file.Name)
+			if err := os.WriteFile(archive, w.Body.Bytes(), 0600); err != nil {
+				t.Fatal(err)
+			}
+			preview, err := maintenance.Inspect(ctx, archive)
+			if err != nil || preview.ArchiveSHA256 != file.SHA256 || preview.Manifest.Schema != store.SchemaVersion {
+				t.Fatal("downloaded backup inspection", err)
+			}
+			target := filepath.Join(t.TempDir(), "restored")
+			if _, err = maintenance.Restore(ctx, archive, target, preview.ArchiveSHA256); err != nil {
+				t.Fatal(err)
+			}
+			db, err := store.Open(filepath.Join(target, "sim.db"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer db.DB.Close()
+			cfg := s.Config
+			cfg.DataDir = target
+			restored := New(cfg, db)
+			defer restored.CloseBackups()
+			c, err := db.Call(ctx, 1, 1012)
+			if err != nil || c.VoicemailMediaID != media || c.NotificationState != "restore_held" || c.VoicemailDeleted {
+				t.Fatal("restored index or notification protection", c, err)
+			}
+			// The ZIP has indexes, not AMR. Restoring it alone must report missing audio.
+			if w = backupAPI(restored, "GET", "/calls/1/voicemail", "", cfg.AdminToken); w.Code != 404 {
+				t.Fatal("database ZIP unexpectedly restored AMR", w.Code)
+			}
+			if _, err = os.Stat(filepath.Join(target, "voicemail", media+".amr")); !os.IsNotExist(err) {
+				t.Fatal("audio unexpectedly exists", err)
+			}
+			// Simulate separately restoring the original private voicemail directory.
+			if err = os.MkdirAll(filepath.Join(target, "voicemail"), 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err = os.WriteFile(filepath.Join(target, "voicemail", media+".amr"), audio, 0600); err != nil {
+				t.Fatal(err)
+			}
+			w = backupAPI(restored, "GET", "/calls/1/voicemail", "", cfg.AdminToken)
+			if w.Code != 200 || !bytes.Equal(w.Body.Bytes(), audio) {
+				t.Fatal("separate audio restore was not readable", w.Code)
+			}
+		})
+	}
+}
 
 func backupAPI(s *Server, method, path, body, token string) *httptest.ResponseRecorder {
 	r := httptest.NewRequest(method, "http://example.com/api"+path, strings.NewReader(body))

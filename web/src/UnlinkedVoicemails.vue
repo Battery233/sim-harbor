@@ -144,7 +144,7 @@ onUnmounted(() => {
           </div>
           <div>
             <dt>文件大小</dt>
-            <dd>{{ item.size }} 字节 · AMR</dd>
+            <dd>{{ (item.size / 1024).toFixed(1) }} KB · AMR</dd>
           </div>
         </dl>
         <p class="tiny muted recording-file-name">文件名：{{ item.file_name || '文件信息异常' }}</p>

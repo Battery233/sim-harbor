@@ -142,7 +142,7 @@ onUnmounted(() => {
         {{ bytes(current.data.max_storage_bytes) }}，最多
         {{ current.data.max_files }}
         份（包含临时副本）。达到上限时停止新增，不自动删除长期备份。容量可在“系统配置 →
-        数据备份”调整。
+        服务器本地备份”调整。
       </p>
       <p v-if="!current.data.items.length" class="muted">暂无备份文件。</p>
       <ul v-else class="backup-list">
