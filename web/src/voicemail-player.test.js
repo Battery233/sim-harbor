@@ -13,7 +13,7 @@ function silenceAMR(frames) {
   return bytes
 }
 
-function harness(decode = tone, resourceFor) {
+function harness(decode = tone, resourceFor, resume = () => Promise.resolve()) {
   const events = [],
     requests = [],
     waiters = [],
@@ -36,7 +36,7 @@ function harness(decode = tone, resourceFor) {
         resume() {
           ctx.resumed = true
           ctx.state = 'running'
-          return Promise.resolve()
+          return resume()
         },
         createBuffer(_channels, length, rate) {
           const data = new Float32Array(length)
@@ -52,7 +52,9 @@ function harness(decode = tone, resourceFor) {
         createBufferSource() {
           const source = {
             connect() {},
-            disconnect() {},
+            disconnect() {
+              source.disconnected = true
+            },
             start() {
               source.started = true
             },
@@ -114,6 +116,8 @@ test('playback resumes audio, then fetches and decodes the authenticated AMR', a
   ])
   h.contexts[0].sources[0].onended()
   assert.deepEqual(h.events.at(-1), { id: 0, phase: 'idle' })
+  assert.equal(h.contexts[0].sources[0].disconnected, true)
+  assert.equal(h.contexts[0].sources[0].onended, null)
 })
 
 test('the same recording toggles off without a second download', async () => {
@@ -180,6 +184,86 @@ test('decoder errors stay on the playback control', async () => {
   const done = h.player.toggle(call(8))
   h.waiters[0].resolve(new Blob([Uint8Array.of(8)]))
   await assert.rejects(done, /无法解码/)
+  assert.deepEqual(h.events.at(-1), { id: 0, phase: 'idle' })
+})
+
+test('音频唤醒失败在下载期间即被接住，离开后不播放或标记成功', async () => {
+  const h = harness(tone, undefined, () => Promise.reject(new Error('SYNTHETIC-RESUME')))
+  const done = h.player.toggle(call(1))
+  h.player.dispose()
+  await new Promise(setImmediate)
+  h.waiters[0].resolve(new Blob([Uint8Array.of(1)]))
+  await done
+  assert.equal(h.contexts[0].sources.length, 0)
+  assert.equal(
+    h.events.some((e) => e.phase === 'playing'),
+    false,
+  )
+})
+
+test('已退役播放的唤醒失败不影响下一段录音', async () => {
+  let attempts = 0
+  const h = harness(tone, undefined, () =>
+    attempts++ === 0 ? Promise.reject(new Error('SYNTHETIC-OLD')) : Promise.resolve(),
+  )
+  const first = h.player.toggle(call(1))
+  const second = h.player.toggle(call(2))
+  await new Promise(setImmediate)
+  h.waiters[0].resolve(new Blob([Uint8Array.of(1)]))
+  h.waiters[1].resolve(new Blob([Uint8Array.of(2)]))
+  await Promise.all([first, second])
+  assert.equal(h.contexts[0].sources.length, 0)
+  assert.deepEqual(h.events.at(-1), { id: 2, phase: 'playing' })
+})
+
+test('当前播放唤醒失败恢复空闲并显示错误，不创建音源', async () => {
+  const h = harness(tone, undefined, () => Promise.reject(new Error('SYNTHETIC-RESUME')))
+  const done = h.player.toggle(call(1))
+  await new Promise(setImmediate)
+  h.waiters[0].resolve(new Blob([Uint8Array.of(1)]))
+  await assert.rejects(done, /无法启动声音/)
+  assert.equal(h.contexts[0].sources.length, 0)
+  assert.deepEqual(h.events.at(-1), { id: 0, phase: 'idle' })
+})
+
+test('下载和音频唤醒同时失败时不遗留另一条未处理异常', async () => {
+  const h = harness(tone, undefined, () => Promise.reject(new Error('SYNTHETIC-RESUME')))
+  const done = h.player.toggle(call(1))
+  h.waiters[0].reject(new Error('SYNTHETIC-DOWNLOAD'))
+  await assert.rejects(done, /SYNTHETIC-DOWNLOAD/)
+  await new Promise(setImmediate)
+  assert.deepEqual(h.events.at(-1), { id: 0, phase: 'idle' })
+})
+
+test('音频同步初始化失败也会清除加载状态', async () => {
+  const h = harness(tone, undefined, () => {
+    throw new Error('SYNTHETIC-RESUME')
+  })
+  await assert.rejects(h.player.toggle(call(1)), /SYNTHETIC-RESUME/)
+  assert.equal(h.requests.length, 0)
+  assert.deepEqual(h.events.at(-1), { id: 0, phase: 'idle' })
+})
+
+test('音源启动失败会停止并断开已创建的音源', async () => {
+  const h = harness()
+  const done = h.player.toggle(call(1))
+  const context = h.contexts[0]
+  const createSource = context.createBufferSource
+  context.createBufferSource = () => {
+    const source = createSource()
+    source.start = () => {
+      throw new Error('SYNTHETIC-START')
+    }
+    return source
+  }
+  h.waiters[0].resolve(new Blob([Uint8Array.of(1)]))
+  await assert.rejects(done, /SYNTHETIC-START/)
+  assert.equal(context.sources[0].stopped, true)
+  assert.equal(context.sources[0].disconnected, true)
+  assert.equal(
+    h.events.some((e) => e.phase === 'playing'),
+    false,
+  )
   assert.deepEqual(h.events.at(-1), { id: 0, phase: 'idle' })
 })
 

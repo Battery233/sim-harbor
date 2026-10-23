@@ -45,7 +45,7 @@ onUnmounted(() => flow.dispose())
         当前数据库来自备份恢复。只有核对完整发送历史后，才能解除恢复保护；此操作不会发送短信。
       </p>
       <p class="notice">
-        结果未确认的旧外发：{{ current.status.unknown_outgoing }}
+        结果未确认的旧短信发送（含板子设置短信）：{{ current.status.unknown_outgoing }}
         条。它们会保留原状态，不自动重发；旧通知也不会补推。
       </p>
       <p class="tiny muted">

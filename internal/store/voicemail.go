@@ -147,7 +147,7 @@ func (s *Store) SaveVoicemail(ctx context.Context, dataDir string, audio []byte,
 		os.Remove(final)
 		return "", 0, false, err
 	}
-	if err = linkVoicemail(ctx, tx, rowID, slot, phone, start, now); err != nil {
+	if err = linkVoicemail(ctx, tx, rowID, slot, phone, start, now, s.notificationsEnabled); err != nil {
 		os.Remove(final)
 		return "", 0, false, err
 	}
@@ -271,13 +271,13 @@ func (s *Store) linkStoredVoicemail(ctx context.Context, mediaID, phone string, 
 		}
 		storedPhone = strings.TrimSpace(phone)
 	}
-	if err = linkVoicemail(ctx, tx, rowID, int(slot), storedPhone, start, now); err != nil {
+	if err = linkVoicemail(ctx, tx, rowID, int(slot), storedPhone, start, now, s.notificationsEnabled); err != nil {
 		return err
 	}
 	return tx.Commit()
 }
 
-func relinkVoicemails(ctx context.Context, tx *sql.Tx, slot int, now int64) error {
+func relinkVoicemails(ctx context.Context, tx *sql.Tx, slot int, now int64, notify bool) error {
 	if slot < 1 || slot > 2 {
 		return nil
 	}
@@ -305,7 +305,7 @@ func relinkVoicemails(ctx context.Context, tx *sql.Tx, slot int, now int64) erro
 	}
 	rows.Close()
 	for _, item := range list {
-		if err = linkVoicemail(ctx, tx, item.id, slot, item.phone, item.start, now); err != nil {
+		if err = linkVoicemail(ctx, tx, item.id, slot, item.phone, item.start, now, notify); err != nil {
 			return err
 		}
 	}
@@ -343,14 +343,14 @@ func (s *Store) reconcileVoicemails(now int64) error {
 	}
 	rows.Close()
 	for _, item := range list {
-		if err = linkVoicemail(ctx, tx, item.id, item.slot, item.phone, item.start, now); err != nil {
+		if err = linkVoicemail(ctx, tx, item.id, item.slot, item.phone, item.start, now, s.notificationsEnabled); err != nil {
 			return err
 		}
 	}
 	return tx.Commit()
 }
 
-func linkVoicemail(ctx context.Context, tx *sql.Tx, rowID int64, slot int, phone string, start, now int64) error {
+func linkVoicemail(ctx context.Context, tx *sql.Tx, rowID int64, slot int, phone string, start, now int64, notify bool) error {
 	callID, ok, err := chooseVoicemailCall(ctx, tx, slot, phone, start)
 	if err != nil || !ok {
 		return err
@@ -370,7 +370,7 @@ func linkVoicemail(ctx context.Context, tx *sql.Tx, rowID int64, slot int, phone
 	if err != nil {
 		return err
 	}
-	return queueLinkedVoicemail(ctx, tx, callID, now, blocked)
+	return queueLinkedVoicemail(ctx, tx, callID, now, blocked, notify)
 }
 
 func chooseVoicemailCall(ctx context.Context, tx *sql.Tx, slot int, phone string, start int64) (int64, bool, error) {

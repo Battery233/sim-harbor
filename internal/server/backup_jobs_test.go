@@ -22,7 +22,11 @@ import (
 func TestManagedBackupDownloadRestoreAndSeparateAudio(t *testing.T) {
 	for _, destination := range []string{"browser", "server"} {
 		t.Run(destination, func(t *testing.T) {
-			s, _ := fixture(t, 0, func(c *config.Config) { c.AdminToken = "SYNTHETIC-BACKUP-RESTORE-TOKEN" })
+			s, _ := fixture(t, 0, func(c *config.Config) {
+				c.AdminToken = "SYNTHETIC-BACKUP-RESTORE-TOKEN"
+				// Include a pending reminder to exercise restore protection.
+				c.BarkKey, c.BarkBaseURL, c.PublicURL = "SYNTHETIC-BARK", "https://bark.example.invalid", "https://example.invalid"
+			})
 			ctx := t.Context()
 			connected := protocol.Number(1002)
 			call := protocol.Event{DeviceID: s.Config.DeviceID, Type: 603, Slot: 1, Phone: "SYNTHETIC-CALLER", ICCID: "SYNTHETIC-CARD", TelStartTS: 1000, TelConnectedTS: &connected, TelEndTS: 1010}

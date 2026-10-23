@@ -39,6 +39,7 @@ export function createVoicemailPlayer({
   }
   function finish(source) {
     if (current?.source !== source) return
+    silence(source)
     current = null
     publish(0, 'idle')
   }
@@ -59,11 +60,17 @@ export function createVoicemailPlayer({
     }
     stop()
     const gen = generation
-    const context = createContext()
-    const unlocking = context.resume?.()
     current = { id: call.id, phase: 'loading' }
     publish(call.id, 'loading')
+    let source
     try {
+      const context = createContext()
+      // Resume inside the click gesture, but handle rejection immediately even
+      // if the download fails or this playback is retired before it completes.
+      const unlocking = Promise.resolve(context.resume?.()).then(
+        () => true,
+        () => false,
+      )
       const blob = await request(path, 'GET', undefined, {
         types: ['audio/amr'],
         max: 2 * 1024 * 1024,
@@ -78,13 +85,13 @@ export function createVoicemailPlayer({
         throw new Error('这段留言无法解码。')
       }
       if (stale(gen)) return
-      if (unlocking) await unlocking
+      if (!(await unlocking)) throw new Error('无法启动声音，请重新点击播放。')
       if (stale(gen)) return
       const { samples, rate } = pcm(audio)
       const buffer = context.createBuffer(1, samples.length, rate)
       if (typeof buffer.copyToChannel === 'function') buffer.copyToChannel(samples, 0)
       else buffer.getChannelData(0).set(samples)
-      const source = context.createBufferSource()
+      source = context.createBufferSource()
       source.buffer = buffer
       source.connect(context.destination)
       source.onended = () => finish(source)
@@ -96,6 +103,7 @@ export function createVoicemailPlayer({
       current = { id: call.id, phase: 'playing', source }
       publish(call.id, 'playing')
     } catch (error) {
+      silence(source)
       if (stale(gen)) return
       current = null
       publish(0, 'idle')
@@ -106,8 +114,10 @@ export function createVoicemailPlayer({
     toggle,
     stop,
     dispose() {
+      if (disposed) return
       disposed = true
       stop()
+      createContext.dispose?.()
     },
   }
 }

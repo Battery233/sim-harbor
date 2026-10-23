@@ -101,7 +101,7 @@ func (s *Store) QueueVoicemailTimeouts(ctx context.Context, now int64, slots ...
 // voicemail push. Otherwise enqueue one distinct late-audio follow-up. A lost
 // Bark response counts as attempted, so it cannot be rewritten as "no audio"
 // after the audio arrives. The unique phase persists dedup across restarts.
-func queueLinkedVoicemail(ctx context.Context, tx *sql.Tx, callID, now int64, held bool) error {
+func queueLinkedVoicemail(ctx context.Context, tx *sql.Tx, callID, now int64, held, notify bool) error {
 	var id, attempted int64
 	var kind, state string
 	err := tx.QueryRowContext(ctx, `SELECT id,kind,state,attempted_at FROM call_notifications WHERE call_id=? AND phase=0`, callID).Scan(&id, &kind, &state, &attempted)
@@ -119,6 +119,9 @@ func queueLinkedVoicemail(ctx context.Context, tx *sql.Tx, callID, now int64, he
 		if _, err = tx.ExecContext(ctx, `UPDATE call_notifications SET state='canceled',last_error='voicemail_arrived' WHERE id=? AND state='pending'`, id); err != nil {
 			return err
 		}
+		if !notify {
+			return nil
+		}
 		_, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO call_notifications(call_id,card_name,group_name,state,last_error,kind,phase,created_at)
    SELECT c.id,c.card_name,coalesce(card.group_name,'来源未确认'),CASE WHEN coalesce(card.notification_enabled,1)=0 THEN 'canceled' WHEN ?=1 THEN 'restore_held' ELSE 'pending' END,CASE WHEN coalesce(card.notification_enabled,1)=0 THEN 'card_notifications_disabled' WHEN ?=1 THEN 'restored_notification_held' ELSE '' END,'voicemail_late',1,?
    FROM calls c LEFT JOIN cards card ON card.id=c.card_id WHERE c.id=?`, hold, hold, now, callID)
@@ -131,6 +134,11 @@ func queueLinkedVoicemail(ctx context.Context, tx *sql.Tx, callID, now int64, he
 	changed, err := res.RowsAffected()
 	if err != nil || changed > 0 {
 		return err
+	}
+	// Keep existing tasks accurate, but do not create a new reminder while Bark
+	// is unconfigured. The persisted link prevents later replay of this audio.
+	if !notify {
+		return nil
 	}
 	_, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO call_notifications(call_id,card_name,group_name,state,last_error,kind,created_at)
  SELECT c.id,c.card_name,coalesce(card.group_name,'来源未确认'),CASE WHEN coalesce(card.notification_enabled,1)=0 THEN 'canceled' WHEN ?=1 THEN 'restore_held' ELSE 'pending' END,CASE WHEN ?=1 AND coalesce(card.notification_enabled,1)=1 THEN 'restored_notification_held' ELSE '' END,'voicemail',?

@@ -21,8 +21,16 @@ import (
 )
 
 type Store struct {
-	DB          *sql.DB
-	voicemailMu sync.Mutex
+	DB                   *sql.DB
+	voicemailMu          sync.Mutex
+	notificationsEnabled bool
+}
+
+// OpenOptions supplies recording-notification policy for uploads and startup
+// relinking. Ingest uses its explicit notify argument. Omitting options preserves
+// the notification behavior of internal data tools.
+type OpenOptions struct {
+	NotificationsEnabled bool
 }
 type Message struct {
 	Multipart     bool   `json:"multipart"`
@@ -58,7 +66,7 @@ type Notification struct {
 	CardGroup   string
 }
 
-func Open(path string) (*Store, error) {
+func Open(path string, options ...OpenOptions) (*Store, error) {
 	for _, marker := range []string{".restore-incomplete", ".sim.db.pending"} {
 		if _, e := os.Lstat(filepath.Join(filepath.Dir(path), marker)); e == nil || !os.IsNotExist(e) {
 			return nil, errors.New("restore_incomplete")
@@ -83,7 +91,7 @@ func Open(path string) (*Store, error) {
 		return nil, e
 	}
 	db.SetMaxOpenConns(1)
-	s := &Store{DB: db}
+	s := &Store{DB: db, notificationsEnabled: len(options) == 0 || options[0].NotificationsEnabled}
 	if e = s.migrate(); e != nil {
 		db.Close()
 		return nil, e
@@ -326,7 +334,7 @@ func (s *Store) Ingest(ctx context.Context, e protocol.Event, raw []byte, notify
 		if err = ingestCall(ctx, tx, e, raw, notify, now, voicemail); err != nil {
 			return err
 		}
-		if err = relinkVoicemails(ctx, tx, int(e.Slot), now); err != nil {
+		if err = relinkVoicemails(ctx, tx, int(e.Slot), now, notify); err != nil {
 			return err
 		}
 	}

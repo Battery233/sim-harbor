@@ -128,6 +128,44 @@ func TestMigrationRejectsStaleHistoryExpiredPreviewNewBackupAndRestart(t *testin
 	}
 }
 
+func TestSettingSMSChangesRequireNewMigrationBackup(t *testing.T) {
+	for _, change := range []string{"claim", "result"} {
+		t.Run(change, func(t *testing.T) {
+			s, token := restoredServer(t)
+			claim := func() int64 {
+				now := time.Now()
+				id, err := s.Store.ClaimVoicemailControl(t.Context(), "SIM-TEST", 1, "SYNTHETIC-DESTINATION", "SYNTHETIC-CARD", "mode", 0, false, now.Unix(), store.DayLimits(now, 60, 5), false)
+				if err != nil {
+					t.Fatal(err)
+				}
+				return id
+			}
+			var id int64
+			if change == "result" {
+				id = claim()
+			}
+			p := prepareMigration(t, s, token)
+			if change == "claim" {
+				claim()
+			} else if err := s.Store.MarkVoicemailControl(t.Context(), id, "unknown"); err != nil {
+				t.Fatal(err)
+			}
+			body := `{"token":"` + p + `","confirmed":true,` + migrationAcknowledgements + `}`
+			if w := migrationCall(s, "/migration/confirm", body, token, ""); w.Code != 409 || !strings.Contains(w.Body.String(), "migration_state_changed") {
+				t.Fatal("stale control history accepted", w.Code, w.Body)
+			}
+			if w := migrationCall(s, "/migration/preview", "{"+migrationAcknowledgements+"}", token, ""); w.Code != 409 || !strings.Contains(w.Body.String(), "migration_backup_required") {
+				t.Fatal("stale backup reused", w.Code, w.Body)
+			}
+			p = prepareMigration(t, s, token)
+			body = `{"token":"` + p + `","confirmed":true,` + migrationAcknowledgements + `}`
+			if w := migrationCall(s, "/migration/confirm", body, token, ""); w.Code != 200 {
+				t.Fatal("fresh backup did not restore confirmation", w.Code, w.Body)
+			}
+		})
+	}
+}
+
 type brokenBackupWriter struct{ header http.Header }
 
 func (w *brokenBackupWriter) Header() http.Header { return w.header }

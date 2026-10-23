@@ -26,7 +26,7 @@ func fixture(t *testing.T, mode int, options ...func(*config.Config)) (*Server, 
 	if e := c.Validate(); e != nil {
 		t.Fatal(e)
 	}
-	db, e := store.Open(filepath.Join(c.DataDir, "sim.db"))
+	db, e := store.Open(filepath.Join(c.DataDir, "sim.db"), store.OpenOptions{NotificationsEnabled: c.BarkKey != ""})
 	if e != nil {
 		t.Fatal(e)
 	}

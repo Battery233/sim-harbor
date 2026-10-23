@@ -59,7 +59,7 @@ func run() bool {
 		logs.Record("logging_startup_failed", diagnostics.Fields{})
 	}
 	defer logs.Close()
-	db, e := store.Open(filepath.Join(c.DataDir, "sim.db"))
+	db, e := store.Open(filepath.Join(c.DataDir, "sim.db"), store.OpenOptions{NotificationsEnabled: c.BarkKey != ""})
 	if e != nil {
 		logs.Record("database_startup_failed", diagnostics.Fields{})
 		os.Exit(1)

@@ -21,9 +21,9 @@ func ingest(t *testing.T, s *Store, e protocol.Event) {
 		t.Fatal(err)
 	}
 }
-func open(t *testing.T, path string) *Store {
+func open(t *testing.T, path string, options ...OpenOptions) *Store {
 	t.Helper()
-	s, e := Open(path)
+	s, e := Open(path, options...)
 	if e != nil {
 		t.Fatal(e)
 	}

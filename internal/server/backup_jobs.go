@@ -239,7 +239,11 @@ func (b *backupRepository) removeFileLocked(id string) error {
 	if err := b.root.RemoveAll(target); err != nil {
 		return err
 	}
-	return b.syncLocked()
+	if err := b.syncLocked(); err != nil {
+		return err
+	}
+	delete(b.downloads, id)
+	return nil
 }
 func writeBackupJSON(root *os.Root, path string, value any) error {
 	p, err := json.Marshal(value)
@@ -760,7 +764,15 @@ func (s *Server) downloadSavedBackup(w http.ResponseWriter, r *http.Request) {
 	evidence := b.evidence[id]
 	b.mu.Unlock()
 	defer file.Close()
-	defer func() { b.mu.Lock(); defer b.mu.Unlock(); b.downloads[id]-- }()
+	defer func() {
+		b.mu.Lock()
+		defer b.mu.Unlock()
+		if b.downloads[id] > 1 {
+			b.downloads[id]--
+		} else {
+			delete(b.downloads, id)
+		}
+	}()
 	// Keep the old migration rule: a browser transfer must finish in full before
 	// it can serve as evidence. Disk-only completion is recorded by the worker.
 	locked := s.migrationGate.TryLock()

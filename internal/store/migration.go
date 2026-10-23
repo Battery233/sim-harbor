@@ -22,9 +22,17 @@ type MigrationState struct {
 	UnknownOutgoing int64  `json:"unknown_outgoing"`
 }
 
+// Both ordinary SMS and board-setting SMS consume the shared send allowance.
+// Use one revision expression for backup/preview reads and transactional confirm.
+const migrationLedgerSQL = `SELECT 'outgoing:' ||
+ (SELECT coalesce(group_concat(id||':'||state||':'||rank||':'||dispatched_at||':'||updated_at,'|'),'') FROM (SELECT * FROM outgoing ORDER BY rowid)) || ';controls:' ||
+ (SELECT coalesce(group_concat(id||':'||state||':'||kind||':'||mode||':'||clear_tts||':'||sent_at||':'||created_at,'|'),'') FROM (SELECT * FROM voicemail_controls ORDER BY id))`
+
 func (s *Store) MigrationState(ctx context.Context) (MigrationState, error) {
 	var m MigrationState
-	err := s.DB.QueryRowContext(ctx, `SELECT restore_id,restored_at,archive_sha256,confirmed_at,confirmation_backup_sha256,confirmation_policy,(SELECT coalesce(group_concat(id||':'||state||':'||rank||':'||dispatched_at||':'||updated_at,'|'),'') FROM (SELECT * FROM outgoing ORDER BY rowid)),(SELECT count(*) FROM outgoing WHERE state='unknown' OR (dispatched_at>0 AND rank<4 AND state!='failed')) FROM recovery_guard WHERE id=1`).Scan(&m.Revision, &m.RestoredAt, &m.ArchiveSHA256, &m.ConfirmedAt, &m.BackupSHA256, &m.Policy, &m.LedgerRevision, &m.UnknownOutgoing)
+	err := s.DB.QueryRowContext(ctx, `SELECT restore_id,restored_at,archive_sha256,confirmed_at,confirmation_backup_sha256,confirmation_policy,(`+migrationLedgerSQL+`),
+ (SELECT count(*) FROM outgoing WHERE state='unknown' OR (dispatched_at>0 AND rank<4 AND state!='failed')) +
+ (SELECT count(*) FROM voicemail_controls WHERE state IN ('claimed','unknown')) FROM recovery_guard WHERE id=1`).Scan(&m.Revision, &m.RestoredAt, &m.ArchiveSHA256, &m.ConfirmedAt, &m.BackupSHA256, &m.Policy, &m.LedgerRevision, &m.UnknownOutgoing)
 	if errors.Is(err, sql.ErrNoRows) {
 		return m, nil
 	}
@@ -50,7 +58,7 @@ func (s *Store) ConfirmMigration(ctx context.Context, revision, backup, ledger s
 	}
 	defer tx.Rollback()
 	var current string
-	if err = tx.QueryRowContext(ctx, `SELECT coalesce(group_concat(id||':'||state||':'||rank||':'||dispatched_at||':'||updated_at,'|'),'') FROM (SELECT * FROM outgoing ORDER BY rowid)`).Scan(&current); err != nil {
+	if err = tx.QueryRowContext(ctx, migrationLedgerSQL).Scan(&current); err != nil {
 		return err
 	}
 	if hash([]byte(current)) != ledger {
