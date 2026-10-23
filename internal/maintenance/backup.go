@@ -550,6 +550,23 @@ func load(ctx context.Context, path string) (*validated, error) {
 			destination := v.database
 			if recordingArchiveName(f.Name) {
 				destination = filepath.Join(v.root, filepath.FromSlash(f.Name))
+				rootPath, ae := filepath.Abs(v.root)
+				if ae != nil {
+					reader.Close()
+					return nil, ae
+				}
+				destPath, ae := filepath.Abs(destination)
+				if ae != nil {
+					reader.Close()
+					return nil, ErrInvalidBackup
+				}
+				rootPath = filepath.Clean(rootPath)
+				destPath = filepath.Clean(destPath)
+				if destPath != rootPath && !strings.HasPrefix(destPath, rootPath+string(os.PathSeparator)) {
+					reader.Close()
+					return nil, ErrInvalidBackup
+				}
+				destination = destPath
 				if e = os.MkdirAll(filepath.Dir(destination), 0700); e != nil {
 					reader.Close()
 					return nil, e
