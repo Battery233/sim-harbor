@@ -549,7 +549,13 @@ func load(ctx context.Context, path string) (*validated, error) {
 		} else {
 			destination := v.database
 			if recordingArchiveName(f.Name) {
-				destination = filepath.Join(v.root, filepath.FromSlash(f.Name))
+				entryName := filepath.Clean(filepath.FromSlash(f.Name))
+				if entryName == "." || entryName == ".." || filepath.IsAbs(entryName) ||
+					strings.HasPrefix(entryName, ".."+string(os.PathSeparator)) {
+					reader.Close()
+					return nil, ErrInvalidBackup
+				}
+				destination = filepath.Join(v.root, entryName)
 				rootPath, ae := filepath.Abs(v.root)
 				if ae != nil {
 					reader.Close()
