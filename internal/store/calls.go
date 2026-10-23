@@ -291,7 +291,7 @@ func (s *Store) ReserveCallNotification(ctx context.Context, n Notification, now
 
 func (s *Store) callNotificationResult(ctx context.Context, n Notification, success bool, code string, now int64) error {
 	if success {
-		_, err := s.DB.ExecContext(ctx, `UPDATE call_notifications SET state='sent',last_error='',attempted_at=CASE WHEN attempted_at=0 THEN ? ELSE attempted_at END,accepted_at=CASE WHEN state='sent' THEN accepted_at ELSE ? END WHERE id=? AND state IN ('pending','sent')`, now, now, n.ID)
+		_, err := s.DB.ExecContext(ctx, `UPDATE call_notifications SET state='sent',last_error='',attempted_at=CASE WHEN attempted_at=0 THEN ? ELSE attempted_at END,accepted_at=CASE WHEN state='sent' THEN accepted_at ELSE ? END WHERE id=? AND call_id=? AND (state IN ('pending','sent') OR (state='canceled' AND attempted_at>0 AND last_error IN ('voicemail_arrived','call_state_uncertain')))`, now, now, n.ID, n.CallID)
 		return err
 	}
 	delay := min(3600, 5*(1<<min(n.Attempts, 9)))

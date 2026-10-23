@@ -206,3 +206,62 @@ test('录音选项进入明确的生成请求；较大文件拒绝普通内存�
   assert.equal(typeof h.calls[0][3].openSink, 'function')
   assert.equal(opened, false) // File request owns opening the writer after validating headers.
 })
+
+test('损坏备份单独展示并拒绝下载，不影响好文件下载；删除仍须明确确认', async () => {
+  const damaged = { id: 'c'.repeat(32), unavailable: true, bytes: 200 }
+  let items = [damaged, file]
+  const f = fixture({
+    request: async (path, method, body) => {
+      if (method === 'POST') {
+        assert.equal(path, `/backups/${damaged.id}/delete`)
+        assert.deepEqual(body, { confirmed: true })
+        items = [file]
+        return { deleted: true }
+      }
+      return list(items)
+    },
+  })
+  assert.equal(await f.flow.load(), true)
+  assert.equal(f.state().data.items.length, 2)
+  assert.equal(await f.flow.download(damaged), false)
+  assert.equal(f.calls.length, 0)
+  assert.equal(await f.flow.download(file), true)
+  assert.equal(f.saves.length, 1)
+  assert.equal(await f.flow.remove(damaged, false), false)
+  assert.equal(f.state().data.items.length, 2)
+  assert.equal(await f.flow.remove(damaged, true), true)
+  assert.deepEqual(f.state().data.items, [file])
+})
+
+test('损坏项路径仍须合法；无法确认占用时允许好文件下载但阻止新增', async () => {
+  const damaged = { id: 'c'.repeat(32), unavailable: true, size_unknown: true, bytes: 0 }
+  const f = fixture({ request: async () => ({ ...list([file, damaged]), storage_unknown: true }) })
+  assert.equal(await f.flow.load(), true)
+  assert.equal(await f.flow.start('server', true), false)
+  assert.equal(await f.flow.download(file), true)
+  assert.equal(await f.flow.remove({ ...damaged, id: '../sim.db' }, true), false)
+  assert.equal(f.calls.length, 1)
+  const invalid = fixture({ request: async () => list([{ ...damaged, id: '../sim.db' }]) })
+  assert.equal(await invalid.flow.load(), false)
+  assert.equal(invalid.state().data, null)
+})
+
+test('生成响应丢失后发现原文件不可用，停止等待且不自动下载或重新生成', async () => {
+  let creates = 0
+  const f = fixture({
+    request: async (path, method) => {
+      if (method === 'POST') {
+        creates++
+        throw new Error('lost response')
+      }
+      return list([{ id, unavailable: true, bytes: 10 }], { id, state: 'ready' })
+    },
+  })
+  assert.equal(await f.flow.start('browser', true), false)
+  assert.equal(await f.flow.load(), true)
+  assert.equal(f.state().uncertain, false)
+  assert.match(f.state().error, /不可用/)
+  await f.flow.load()
+  assert.equal(f.saves.length, 0)
+  assert.equal(creates, 1)
+})

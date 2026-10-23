@@ -26,6 +26,8 @@ func (s *Server) deleteMessage(w http.ResponseWriter, r *http.Request) {
 	}
 	// Serialize deletion with task selection and sending, so a queued message
 	// cannot start a push after the deletion has completed.
+	s.notificationSendGate.Lock()
+	defer s.notificationSendGate.Unlock()
 	s.notificationGate.Lock()
 	err = s.Store.DeleteMessage(r.Context(), id, time.Now().Unix())
 	s.notificationGate.Unlock()

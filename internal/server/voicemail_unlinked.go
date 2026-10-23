@@ -71,6 +71,8 @@ func (s *Server) unlinkedVoicemailRoutes(mux *http.ServeMux) {
 			reply(w, 400, map[string]string{"error": "voicemail_delete_confirmation_required"})
 			return
 		}
+		s.notificationSendGate.Lock()
+		defer s.notificationSendGate.Unlock()
 		s.notificationGate.Lock()
 		defer s.notificationGate.Unlock()
 		// Once explicitly confirmed, a disconnected browser must not interrupt the

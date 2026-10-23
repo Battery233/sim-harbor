@@ -28,6 +28,7 @@ const backupJobTimeout = 10 * time.Minute
 const backupFileLimit = 20
 
 var backupID = regexp.MustCompile(`^[a-f0-9]{32}$`)
+var backupDigest = regexp.MustCompile(`^[a-f0-9]{64}$`)
 var legacyBackupTemp = regexp.MustCompile(`^\.sim-backup-[0-9]+$`)
 var errBackupStorage = errors.New("backup_storage_full")
 var errBackupSpace = errors.New("backup_disk_space_low")
@@ -44,6 +45,8 @@ type backupFile struct {
 	SHA256            string `json:"sha256"`
 	IncludeRecordings bool   `json:"include_recordings,omitempty"`
 	RecordingFiles    int    `json:"recording_files,omitempty"`
+	Unavailable       bool   `json:"unavailable,omitempty"`
+	SizeUnknown       bool   `json:"size_unknown,omitempty"`
 }
 type backupJob struct {
 	ID                string `json:"id"`
@@ -63,6 +66,7 @@ type backupRepository struct {
 	limit     int64
 	downloads map[string]int
 	evidence  map[string]*migrationBackup
+	damaged   map[string]bool
 }
 
 // All repository mutation is under mu. The process data-directory lease excludes
@@ -89,7 +93,7 @@ func (s *Server) initBackups() (*backupRepository, error) {
 		if limit == 0 {
 			limit = 2048
 		}
-		b := &backupRepository{root: root, ctx: ctx, cancel: cancel, limit: limit << 20, downloads: map[string]int{}, evidence: map[string]*migrationBackup{}}
+		b := &backupRepository{root: root, ctx: ctx, cancel: cancel, limit: limit << 20, downloads: map[string]int{}, evidence: map[string]*migrationBackup{}, damaged: map[string]bool{}}
 		// A crash cannot turn a half-written archive into a successful backup.
 		entries, err := fs.ReadDir(root.FS(), ".")
 		if err == nil {
@@ -291,7 +295,7 @@ func (b *backupRepository) fileLocked(id string) (backupFile, error) {
 	if err = readBackupJSON(b.root, filepath.Join(id, "metadata.json"), &f); err != nil {
 		return f, err
 	}
-	if f.RecordingFiles < 0 || f.RecordingFiles > store.RecordingBackupFiles || (!f.IncludeRecordings && f.Bytes > maintenance.DatabaseArchiveLimit) || f.ID != id || f.CreatedAt <= 0 || f.Bytes <= 0 || f.Bytes > maintenance.MaxArchive || len(f.SHA256) != 64 ||
+	if f.Unavailable || f.SizeUnknown || f.RecordingFiles < 0 || f.RecordingFiles > store.RecordingBackupFiles || (!f.IncludeRecordings && f.Bytes > maintenance.DatabaseArchiveLimit) || f.ID != id || f.CreatedAt <= 0 || f.Bytes <= 0 || f.Bytes > maintenance.MaxArchive || !backupDigest.MatchString(f.SHA256) ||
 		f.Name != "sim-backup-"+time.Unix(f.CreatedAt, 0).UTC().Format("20060102T150405Z")+"-"+id+".zip" ||
 		f.Destination != "server" && f.Destination != "browser" ||
 		f.Destination == "server" && f.ExpiresAt != 0 || f.Destination == "browser" && f.ExpiresAt != f.CreatedAt+int64(backupLifetime/time.Second) {
@@ -303,6 +307,36 @@ func (b *backupRepository) fileLocked(id string) (backupFile, error) {
 	}
 	return f, nil
 }
+
+// Damaged items remain visible and count toward the quota. Never trust their
+// metadata for paths, expiry or capacity, and never follow a symlink to count it.
+func (b *backupRepository) damagedFileLocked(id string) backupFile {
+	f := backupFile{ID: id, Unavailable: true}
+	entries := 0
+	err := fs.WalkDir(b.root.FS(), id, func(path string, entry fs.DirEntry, err error) error {
+		entries++
+		if err != nil || entries > 10002 {
+			return errBackupFiles
+		}
+		info, err := entry.Info()
+		if err != nil || (!info.IsDir() && !info.Mode().IsRegular()) {
+			return errBackupFiles
+		}
+		if info.Mode().IsRegular() {
+			if info.Size() < 0 || info.Size() > int64(^uint64(0)>>1)-f.Bytes {
+				return errBackupFiles
+			}
+			f.Bytes += info.Size()
+		}
+		return nil
+	})
+	f.SizeUnknown = err != nil
+	if evidence := b.evidence[id]; evidence != nil {
+		evidence.invalid.Store(true)
+	}
+	return f
+}
+
 func (b *backupRepository) filesLocked(now time.Time) ([]backupFile, error) {
 	files := []backupFile{}
 	entries, err := fs.ReadDir(b.root.FS(), ".")
@@ -320,8 +354,9 @@ func (b *backupRepository) filesLocked(now time.Time) ([]backupFile, error) {
 			continue
 		}
 		f, err := b.fileLocked(entry.Name())
-		if err != nil {
-			return nil, err
+		if err != nil || b.damaged[entry.Name()] {
+			files = append(files, b.damagedFileLocked(entry.Name()))
+			continue
 		}
 		if f.ExpiresAt != 0 && now.Unix() >= f.ExpiresAt && b.downloads[f.ID] == 0 {
 			if err = b.removeFileLocked(f.ID); err != nil {
@@ -389,10 +424,16 @@ func (s *Server) listBackups(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var used int64
+	unknown := false
 	for _, f := range files {
-		used += f.Bytes
+		if f.Bytes > int64(^uint64(0)>>1)-used {
+			unknown = true
+		} else {
+			used += f.Bytes
+		}
+		unknown = unknown || f.SizeUnknown
 	}
-	reply(w, 200, map[string]any{"items": files, "job": b.job, "storage_bytes": used, "max_storage_bytes": b.limit, "max_files": backupFileLimit, "directory": filepath.Join(s.Config.DataDir, "backups")})
+	reply(w, 200, map[string]any{"items": files, "job": b.job, "storage_bytes": used, "storage_unknown": unknown, "max_storage_bytes": b.limit, "max_files": backupFileLimit, "directory": filepath.Join(s.Config.DataDir, "backups")})
 }
 func (s *Server) startBackup(w http.ResponseWriter, r *http.Request) {
 	var action struct {
@@ -497,6 +538,12 @@ func (s *Server) backupSpaceLocked(ctx context.Context, b *backupRepository, fil
 	}
 	var used int64
 	for _, f := range files {
+		if f.SizeUnknown {
+			return errBackupFiles
+		}
+		if f.Bytes > b.limit-used {
+			return errBackupStorage
+		}
 		used += f.Bytes
 	}
 	if len(files) >= backupFileLimit || used+estimate+(32<<20) > b.limit {
@@ -599,6 +646,12 @@ func (s *Server) createSavedBackup(ctx context.Context, b *backupRepository, job
 	}
 	var used int64
 	for _, existing := range files {
+		if existing.SizeUnknown {
+			return f, before, errBackupFiles
+		}
+		if existing.Bytes > b.limit-used {
+			return f, before, errBackupStorage
+		}
 		used += existing.Bytes
 	}
 	if len(files) >= backupFileLimit || used+f.Bytes > b.limit {
@@ -628,6 +681,10 @@ func (s *Server) deleteBackup(w http.ResponseWriter, r *http.Request) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	id := r.PathValue("id")
+	if !backupID.MatchString(id) {
+		reply(w, 404, map[string]string{"error": "backup_not_found"})
+		return
+	}
 	if b.downloads[id] > 0 {
 		reply(w, 409, map[string]string{"error": "backup_download_in_progress"})
 		return
@@ -637,7 +694,9 @@ func (s *Server) deleteBackup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer s.migrationGate.Unlock()
-	if _, err := b.fileLocked(id); err != nil {
+	// Deletion needs an explicitly confirmed, confined ID, not readable metadata
+	// or an intact ZIP. RemoveAll unlinks symlinks rather than following them.
+	if _, err := b.root.Lstat(id); err != nil {
 		reply(w, 404, map[string]string{"error": "backup_not_found"})
 		return
 	}
@@ -649,6 +708,7 @@ func (s *Server) deleteBackup(w http.ResponseWriter, r *http.Request) {
 		s.migrationBackup, s.migrationPreview = nil, nil
 	}
 	delete(b.evidence, id)
+	delete(b.damaged, id)
 	reply(w, 200, map[string]bool{"deleted": true})
 }
 func (s *Server) downloadSavedBackup(w http.ResponseWriter, r *http.Request) {
@@ -665,8 +725,16 @@ func (s *Server) downloadSavedBackup(w http.ResponseWriter, r *http.Request) {
 	b.mu.Lock()
 	f, err := b.fileLocked(id)
 	if err != nil || f.ExpiresAt != 0 && time.Now().Unix() >= f.ExpiresAt {
+		if evidence := b.evidence[id]; evidence != nil {
+			evidence.invalid.Store(true)
+		}
 		b.mu.Unlock()
 		reply(w, 404, map[string]string{"error": "backup_not_found"})
+		return
+	}
+	if b.damaged[id] {
+		b.mu.Unlock()
+		reply(w, 503, map[string]string{"error": "backup_file_unavailable"})
 		return
 	}
 	total := 0
@@ -680,8 +748,12 @@ func (s *Server) downloadSavedBackup(w http.ResponseWriter, r *http.Request) {
 	}
 	file, err := b.root.Open(filepath.Join(id, f.Name))
 	if err != nil {
+		b.damaged[id] = true
+		if evidence := b.evidence[id]; evidence != nil {
+			evidence.invalid.Store(true)
+		}
 		b.mu.Unlock()
-		reply(w, 503, map[string]string{"error": "backup_files_unavailable"})
+		reply(w, 503, map[string]string{"error": "backup_file_unavailable"})
 		return
 	}
 	b.downloads[id]++
@@ -700,6 +772,15 @@ func (s *Server) downloadSavedBackup(w http.ResponseWriter, r *http.Request) {
 	// uses bounded memory and leaves a damaged file in place for investigation.
 	check := sha256.New()
 	if _, err := io.Copy(check, &backupReader{ctx: r.Context(), reader: file}); err != nil || hex.EncodeToString(check.Sum(nil)) != f.SHA256 {
+		// A canceled transfer is not evidence of file corruption.
+		if r.Context().Err() == nil {
+			b.mu.Lock()
+			b.damaged[id] = true
+			if evidence != nil {
+				evidence.invalid.Store(true)
+			}
+			b.mu.Unlock()
+		}
 		reply(w, 503, map[string]string{"error": "backup_files_unavailable"})
 		return
 	}

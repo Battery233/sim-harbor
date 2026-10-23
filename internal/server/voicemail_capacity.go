@@ -33,7 +33,7 @@ func voicemailCapacityLevel(used, limit int64) int64 {
 	return min(limit, half+(used-half)/(32<<20)*(32<<20))
 }
 
-// The notification worker holds notificationGate, as for other push jobs.
+// Owned by the notification worker. Network I/O never holds notificationGate.
 // Never run network requests on the recording-upload request path.
 func (s *Server) observeVoicemailCapacity(ctx context.Context, now time.Time) error {
 	if s.Config.VoicemailMode() != "public" || !s.Config.VoicemailEnabled {

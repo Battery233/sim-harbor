@@ -20,6 +20,8 @@ func (s *Server) cardNotificationRoutes(mux *http.ServeMux) {
 			reply(w, 400, map[string]string{"error": "invalid_filter"})
 			return
 		}
+		s.notificationSendGate.Lock()
+		defer s.notificationSendGate.Unlock()
 		s.notificationGate.Lock()
 		err := s.Store.SetCardNotifications(r.Context(), r.PathValue("id"), *in.Enabled, *in.Expected)
 		s.notificationGate.Unlock()

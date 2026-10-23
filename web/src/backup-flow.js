@@ -23,6 +23,7 @@ export async function selectBackupFile(name) {
 function validBackupFile(file) {
   return (
     file &&
+    file.unavailable !== true &&
     /^[a-f0-9]{32}$/.test(file.id) &&
     /^sim-backup-\d{8}T\d{6}Z-[a-f0-9]{32}\.zip$/.test(file.name) &&
     Number.isSafeInteger(file.bytes) &&
@@ -32,6 +33,16 @@ function validBackupFile(file) {
     file.created_at > 0 &&
     /^[a-f0-9]{64}$/.test(file.sha256) &&
     ['browser', 'server'].includes(file.destination)
+  )
+}
+
+function validBackupItem(file) {
+  if (file?.unavailable !== true) return validBackupFile(file)
+  return (
+    /^[a-f0-9]{32}$/.test(file.id) &&
+    Number.isSafeInteger(file.bytes) &&
+    file.bytes >= 0 &&
+    (file.size_unknown === undefined || typeof file.size_unknown === 'boolean')
   )
 }
 
@@ -125,8 +136,9 @@ export function createBackupFlow({
       if (
         !Array.isArray(data.items) ||
         data.items.length > 20 ||
-        !data.items.every(validBackupFile) ||
+        !data.items.every(validBackupItem) ||
         !Number.isSafeInteger(data.max_storage_bytes) ||
+        (data.storage_unknown !== undefined && typeof data.storage_unknown !== 'boolean') ||
         (data.job &&
           (!/^[a-f0-9]{32}$/.test(data.job.id) ||
             !['running', 'ready', 'failed'].includes(data.job.state)))
@@ -146,7 +158,9 @@ export function createBackupFlow({
         watchID = ''
         const target = handle
         handle = null
-        if (file.destination === 'browser') await download(file, target)
+        if (file.unavailable)
+          update({ error: '这份备份不可用，已保留原文件；请核对后再决定是否删除。' })
+        else if (file.destination === 'browser') await download(file, target)
         else update({ note: '备份已保存到服务器，可随时从下方下载。' })
       } else if (matched && data.job.state === 'failed') {
         watchID = ''
@@ -179,6 +193,7 @@ export function createBackupFlow({
         state.downloading ||
         state.deleting ||
         state.uncertain ||
+        state.data?.storage_unknown ||
         state.data?.job?.state === 'running'
       )
         return false
@@ -221,7 +236,7 @@ export function createBackupFlow({
       if (
         stopped ||
         !confirmed ||
-        !validBackupFile(file) ||
+        !validBackupItem(file) ||
         state.downloading ||
         state.deleting ||
         state.creating ||

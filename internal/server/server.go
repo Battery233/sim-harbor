@@ -51,32 +51,33 @@ type queryReply struct {
 	receivedAt time.Time
 }
 type Server struct {
-	Logs             *diagnostics.Recorder
-	Config           config.Config
-	Settings         *config.Settings
-	Restart          func()
-	restarting       atomic.Bool
-	Store            *store.Store
-	mu               sync.Mutex
-	active           *session
-	conns            map[net.Conn]struct{}
-	sendGate         sync.Mutex
-	backupGate       sync.Mutex
-	backupsOnce      sync.Once
-	backups          *backupRepository
-	backupsErr       error
-	migrationGate    sync.Mutex
-	migrationBackup  *migrationBackup
-	migrationPreview *migrationPreview
-	settingsGate     sync.Mutex
-	notificationGate sync.Mutex
-	exportGate       sync.Mutex
-	query            sync.Mutex
-	greetingMu       sync.Mutex
-	greetingSent     map[string]time.Time
-	wg               sync.WaitGroup
-	client           *http.Client
-	voicemailIngress voicemailIngress
+	Logs                 *diagnostics.Recorder
+	Config               config.Config
+	Settings             *config.Settings
+	Restart              func()
+	restarting           atomic.Bool
+	Store                *store.Store
+	mu                   sync.Mutex
+	active               *session
+	conns                map[net.Conn]struct{}
+	sendGate             sync.Mutex
+	backupGate           sync.Mutex
+	backupsOnce          sync.Once
+	backups              *backupRepository
+	backupsErr           error
+	migrationGate        sync.Mutex
+	migrationBackup      *migrationBackup
+	migrationPreview     *migrationPreview
+	settingsGate         sync.Mutex
+	notificationGate     sync.Mutex // Short task selection/result and ingestion coordination.
+	notificationSendGate sync.Mutex // Serialize dispatch with explicit deletion/mute only.
+	exportGate           sync.Mutex
+	query                sync.Mutex
+	greetingMu           sync.Mutex
+	greetingSent         map[string]time.Time
+	wg                   sync.WaitGroup
+	client               *http.Client
+	voicemailIngress     voicemailIngress
 }
 
 func New(c config.Config, s *store.Store, logs ...*diagnostics.Recorder) *Server {
@@ -199,7 +200,7 @@ func (s *Server) handle(ctx context.Context, c net.Conn) {
 		s.recordTimeMarker(sess, e, receivedAt)
 		callReport := protocol.IsIncomingCall(e.Type)
 		if callReport {
-			// Serialize a contradictory call update with push selection/result.
+			// Serialize call updates with task selection/result, never network I/O.
 			s.notificationGate.Lock()
 		}
 		// Serialize replacement with ingestion so a retired connection cannot
@@ -658,9 +659,7 @@ func (s *Server) RunNotifications(ctx context.Context) {
 			return
 		case <-tick.C:
 			if time.Since(lastCapacityObserve) >= 30*time.Second {
-				s.notificationGate.Lock()
 				err := s.observeVoicemailCapacity(ctx, time.Now())
-				s.notificationGate.Unlock()
 				lastCapacityObserve = time.Now()
 				if err != nil {
 					s.Logs.Record("voicemail_capacity_observation_failed", diagnostics.Fields{})
@@ -676,9 +675,11 @@ func (s *Server) RunNotifications(ctx context.Context) {
 				}
 			}
 			for i := 0; i < 10; i++ {
+				s.notificationSendGate.Lock()
 				s.notificationGate.Lock()
 				if e := s.Store.QueueCallTimeouts(ctx, time.Now().Unix()); e != nil {
 					s.notificationGate.Unlock()
+					s.notificationSendGate.Unlock()
 					s.Logs.Record("notification_queue_failed", diagnostics.Fields{})
 					break
 				}
@@ -688,16 +689,19 @@ func (s *Server) RunNotifications(ctx context.Context) {
 				}
 				if e := s.Store.QueueVoicemailTimeouts(ctx, time.Now().Unix(), voicemailSlots...); e != nil {
 					s.notificationGate.Unlock()
+					s.notificationSendGate.Unlock()
 					s.Logs.Record("notification_queue_failed", diagnostics.Fields{})
 					break
 				}
 				n, e := s.Store.NextNotification(ctx)
 				if errors.Is(e, sql.ErrNoRows) {
 					s.notificationGate.Unlock()
+					s.notificationSendGate.Unlock()
 					break
 				}
 				if e != nil {
 					s.notificationGate.Unlock()
+					s.notificationSendGate.Unlock()
 					s.Logs.Record("notification_queue_failed", diagnostics.Fields{})
 					break
 				}
@@ -705,13 +709,20 @@ func (s *Server) RunNotifications(ctx context.Context) {
 					reserved, err := s.Store.ReserveCallNotification(ctx, n, time.Now().Unix())
 					if err != nil || !reserved {
 						s.notificationGate.Unlock()
+						s.notificationSendGate.Unlock()
 						s.Logs.Record("notification_persistence_failed", diagnostics.Fields{})
 						break
 					}
 				}
-				ok, code := s.pushNotification(ctx, n)
-				persistErr := s.Store.NotificationResultCode(ctx, n, ok, code)
 				s.notificationGate.Unlock()
+				ok, code := s.pushNotification(ctx, n)
+				// Record a completed/uncertain attempt even when shutdown canceled the worker.
+				resultCtx, finish := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
+				s.notificationGate.Lock()
+				persistErr := s.Store.NotificationResultCode(resultCtx, n, ok, code)
+				s.notificationGate.Unlock()
+				finish()
+				s.notificationSendGate.Unlock()
 				if persistErr != nil {
 					s.Logs.Record("notification_persistence_failed", diagnostics.Fields{Slot: n.Slot})
 					break

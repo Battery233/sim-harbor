@@ -124,7 +124,7 @@ func queueLinkedVoicemail(ctx context.Context, tx *sql.Tx, callID, now int64, he
    FROM calls c LEFT JOIN cards card ON card.id=c.card_id WHERE c.id=?`, hold, hold, now, callID)
 		return err
 	}
-	res, err := tx.ExecContext(ctx, `UPDATE call_notifications SET kind='voicemail',created_at=?,state=CASE WHEN ?=1 THEN 'restore_held' ELSE state END,last_error=CASE WHEN ?=1 THEN 'restored_notification_held' ELSE last_error END WHERE call_id=? AND phase=0 AND state='pending' AND (kind IN ('missed','timeout') OR (kind='voicemail_missing' AND attempted_at=0))`, now, hold, hold, callID)
+	res, err := tx.ExecContext(ctx, `UPDATE call_notifications SET kind='voicemail',created_at=?,state=CASE WHEN ?=1 THEN 'restore_held' ELSE state END,last_error=CASE WHEN ?=1 THEN 'restored_notification_held' ELSE last_error END WHERE call_id=? AND phase=0 AND state='pending' AND attempted_at=0 AND kind IN ('missed','timeout','voicemail_missing')`, now, hold, hold, callID)
 	if err != nil {
 		return err
 	}

@@ -9,6 +9,7 @@ export const backupErrors = {
   backup_storage_full: '服务器备份达到容量或数量上限，请先下载并手动删除不再需要的备份。',
   backup_disk_space_low: '服务器剩余磁盘空间不足，备份未完成；已有备份保留。',
   backup_files_unavailable: '服务器备份目录无法读取，请检查目录权限和文件完整性。',
+  backup_file_unavailable: '这份备份未通过校验，原文件保留；请刷新列表核对，不影响其他正常备份。',
   backup_download_in_progress: '备份正在下载，暂时不能删除，或已有两份下载正在进行。',
   backup_not_found: '备份已删除或临时保留时间已到，请刷新列表。',
   backup_interrupted: '备份生成被中断，未完成的临时文件会清理；请核对列表后重新生成。',

@@ -115,7 +115,14 @@ onUnmounted(() => {
       >
       <div class="outgoing-actions">
         <button
-          :disabled="!current.data || !consent || working || running || current.uncertain"
+          :disabled="
+            !current.data ||
+            current.data.storage_unknown ||
+            !consent ||
+            working ||
+            running ||
+            current.uncertain
+          "
           @click="start"
         >
           {{
@@ -160,12 +167,19 @@ onUnmounted(() => {
         份（包含临时副本）。达到上限时停止新增，不自动删除长期备份。容量可在“系统配置 →
         服务器本地备份”调整。
       </p>
+      <p v-if="current.data.storage_unknown" class="notice error" role="alert">
+        部分备份的占用无法确认，上方仅为可确认的占用，暂不生成新备份。请核对不可用项和目录权限。
+      </p>
       <p v-if="!current.data.items.length" class="muted">暂无备份文件。</p>
       <ul v-else class="backup-list">
         <li v-for="file in current.data.items" :key="file.id">
           <div class="backup-file-info">
-            <strong>{{ file.name }}</strong
-            ><span class="tiny muted"
+            <strong>{{ file.unavailable ? '不可用备份 · ' + file.id : file.name }}</strong>
+            <span v-if="file.unavailable" class="tiny notice error">
+              文件或管理信息无法读取、大小不符或校验失败，原文件保留。不能下载或用于迁移确认；
+              {{ file.size_unknown ? '占用无法确认。' : '当前占用 ' + bytes(file.bytes) + '。' }}
+            </span>
+            <span v-else class="tiny muted"
               >{{ date(file.created_at) }} · {{ bytes(file.bytes) }} ·
               {{
                 file.include_recordings
@@ -173,12 +187,14 @@ onUnmounted(() => {
                   : '仅数据库，不含录音'
               }}
               · {{ file.expires_at ? `临时保留至 ${date(file.expires_at)}` : '长期保留' }}</span
-            ><span class="tiny muted backup-hash">SHA-256：{{ file.sha256 }}</span>
+            ><span v-if="!file.unavailable" class="tiny muted backup-hash"
+              >SHA-256：{{ file.sha256 }}</span
+            >
           </div>
           <div class="outgoing-actions">
             <button
               class="secondary"
-              :disabled="working || current.uncertain"
+              :disabled="file.unavailable || working || current.uncertain"
               @click="flow.download(file)"
             >
               {{ current.downloading === file.id ? '正在下载…' : '下载' }}
@@ -195,7 +211,7 @@ onUnmounted(() => {
             </button>
           </div>
           <p v-if="deleteID === file.id" class="tiny muted">
-            只删除服务器上的这份 ZIP，不影响正在使用的数据库。请先确认已有需要保留的副本。
+            删除服务器上的这份备份及其管理文件，不影响正在使用的数据库和录音。请先确认已有需要保留的副本。
           </p>
         </li>
       </ul>

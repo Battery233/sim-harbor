@@ -2,6 +2,7 @@ package server
 
 import (
 	"net/http"
+	"sync/atomic"
 	"time"
 
 	"github.com/Battery233/sim-harbor/internal/store"
@@ -12,6 +13,7 @@ const migrationWindow = 15 * time.Minute
 type migrationBackup struct {
 	revision, digest, ledger string
 	created                  time.Time
+	invalid                  atomic.Bool
 }
 type migrationPreview struct {
 	token, revision, backup, ledger string
@@ -66,7 +68,7 @@ func (s *Server) previewMigration(w http.ResponseWriter, r *http.Request) {
 	}
 	now := time.Now()
 	b := s.migrationBackup
-	if b == nil || b.revision != m.Revision || b.ledger != m.LedgerRevision || now.Before(b.created) || now.Sub(b.created) >= migrationWindow {
+	if b == nil || b.invalid.Load() || b.revision != m.Revision || b.ledger != m.LedgerRevision || now.Before(b.created) || now.Sub(b.created) >= migrationWindow {
 		reply(w, 409, map[string]string{"error": "migration_backup_required"})
 		return
 	}
@@ -97,6 +99,11 @@ func (s *Server) confirmMigration(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
 	if p == nil || action.Token != p.token || !now.Before(p.expires) {
 		reply(w, 409, map[string]string{"error": "migration_preview_expired"})
+		return
+	}
+	if s.migrationBackup == nil || s.migrationBackup.invalid.Load() {
+		s.migrationPreview = nil
+		reply(w, 409, map[string]string{"error": "migration_backup_required"})
 		return
 	}
 	// Consume before writing. Any failure or lost response requires a GET and a
