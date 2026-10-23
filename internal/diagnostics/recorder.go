@@ -18,6 +18,8 @@ import (
 )
 
 type Fields struct {
+	CallReference     string `json:"call_ref,omitempty"`
+	MediaReference    string `json:"media_ref,omitempty"`
 	SMSGroup          string `json:"sms_group,omitempty"`
 	SMSTotal          int    `json:"sms_total,omitempty"`
 	SMSParts          string `json:"sms_parts,omitempty"`
@@ -91,6 +93,12 @@ func validReference(v string) bool {
 	return true
 }
 func clean(f Fields) Fields {
+	if !validReference(f.CallReference) {
+		f.CallReference = ""
+	}
+	if !validReference(f.MediaReference) {
+		f.MediaReference = ""
+	}
 	if !validReference(f.SMSGroup) {
 		f.SMSGroup = ""
 	}
@@ -183,7 +191,7 @@ func priority(level string) int {
 }
 func ValidFilter(f Filter) bool {
 	return (f.Level == "" || priority(f.Level) >= 0) &&
-		(f.Category == "" || f.Category == "service" || f.Category == "tcp" || f.Category == "query" || f.Category == "sms" || f.Category == "notification") &&
+		(f.Category == "" || f.Category == "service" || f.Category == "tcp" || f.Category == "query" || f.Category == "sms" || f.Category == "notification" || f.Category == "call") &&
 		(f.Reference == "" || validReference(f.Reference)) && f.Before >= 0
 }
 func New(level string, limit int, output io.Writer) *Recorder {
@@ -336,7 +344,7 @@ func (r *Recorder) Snapshot(filter Filter, limit int) ([]Event, Status) {
 		if filter.Before > 0 && e.ID >= filter.Before || filter.Level != "" && e.Level != filter.Level || filter.Category != "" && e.Category != filter.Category {
 			continue
 		}
-		if filter.Reference != "" && filter.Reference != e.Session && filter.Reference != e.Transaction && filter.Reference != e.Operation && filter.Reference != e.SMSGroup {
+		if filter.Reference != "" && filter.Reference != e.Session && filter.Reference != e.Transaction && filter.Reference != e.Operation && filter.Reference != e.SMSGroup && filter.Reference != e.CallReference && filter.Reference != e.MediaReference {
 			continue
 		}
 		if e.SMSComplete != nil {

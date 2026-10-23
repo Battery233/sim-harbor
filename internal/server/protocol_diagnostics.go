@@ -30,6 +30,7 @@ func readFailure(err error) string {
 func (s *Server) recordProtocolEvent(ctx context.Context, sess *session, e protocol.Event, raw []byte) {
 	f := diagnostics.Fields{Session: sess.diagnosticID, Transaction: diagnostics.Reference(e.TID), Type: int(e.Type), SubType: int(e.SubType), Slot: int(e.Slot)}
 	s.Logs.Record("event_received", f)
+	s.recordCallProgress(ctx, sess, e, raw)
 	if e.Type != 401 && e.Type != 402 && e.Type != 502 && e.Type != 503 {
 		return
 	}

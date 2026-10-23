@@ -1,6 +1,21 @@
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { startVisiblePolling } from './visible-polling.js'
+import {
+  createRecordingTrace,
+  recordingTraceStages,
+  recordingTraceLogNotices,
+} from './recording-trace.js'
+import { ref, reactive, onMounted, onUnmounted } from 'vue'
 const props = defineProps({ request: Function })
+const trace = reactive({ id: 0, busy: false, data: null, error: '' })
+const flow = createRecordingTrace({
+  request: (...args) => props.request(...args),
+  changed: (value) => Object.assign(trace, value),
+})
+function toggleTrace(id) {
+  if (trace.id === id) flow.clear()
+  else flow.load(id)
+}
 const rows = ref([]),
   error = ref(''),
   busy = ref(false)
@@ -28,6 +43,7 @@ async function load() {
       throw new Error('invalid')
     if (!stopped) {
       rows.value = data.items
+      if (trace.id && !data.items.some((r) => r.call_id === trace.id)) flow.clear()
       error.value = ''
     }
   } catch {
@@ -38,11 +54,12 @@ async function load() {
 }
 onMounted(() => {
   load()
-  timer = setInterval(load, 30000)
+  timer = startVisiblePolling(load, 30000)
 })
 onUnmounted(() => {
   stopped = true
-  clearInterval(timer)
+  flow.dispose()
+  timer?.()
 })
 </script>
 <template>
@@ -55,23 +72,66 @@ onUnmounted(() => {
     <p v-if="error" class="tiny" role="alert">
       {{ error }}<span v-if="rows.length">下方为上次读取结果。</span>
     </p>
-    <p v-for="item in rows" :key="item.slot" class="tiny">
-      <strong>卡槽 {{ item.slot }}</strong> ·
-      <template v-if="item.call_id"
-        >最近接通上报 {{ date(item.connected_at) }} ·
-        {{ item.ended ? '已收到结束上报' : '结束尚未确认' }} ·
-        {{
-          item.recording_deleted
-            ? '录音已删除'
-            : item.recording_at
-              ? item.recording_available
-                ? '录音可读取 · ' + date(item.recording_at)
-                : '录音索引存在，文件不可读取'
-              : '暂未收到关联录音'
-        }}
-        <a :href="'?call=' + item.call_id">查看来电</a></template
-      >
-      <template v-else>暂无接通上报</template>
-    </p>
+    <div v-for="item in rows" :key="item.slot" class="tiny recording-activity-row">
+      <p>
+        <strong>卡槽 {{ item.slot }}</strong> ·
+        <template v-if="item.call_id"
+          >最近接通上报 {{ date(item.connected_at) }} ·
+          {{ item.ended ? '已收到结束上报' : '结束尚未确认' }} ·
+          {{
+            item.recording_deleted
+              ? '录音已删除'
+              : item.recording_at
+                ? item.recording_available
+                  ? '录音可读取 · ' + date(item.recording_at)
+                  : '录音索引存在，文件不可读取'
+                : '暂未收到关联录音'
+          }}
+          <a :href="'?call=' + item.call_id">查看来电</a>
+          <button
+            type="button"
+            class="secondary"
+            :aria-expanded="trace.id === item.call_id"
+            @click="toggleTrace(item.call_id)"
+          >
+            {{ trace.id === item.call_id ? '收起链路' : '查看链路' }}
+          </button></template
+        >
+        <template v-else>暂无接通上报</template>
+      </p>
+      <div v-if="item.call_id && trace.id === item.call_id" class="recording-trace">
+        <button
+          type="button"
+          class="secondary"
+          :disabled="trace.busy"
+          @click="flow.load(item.call_id)"
+        >
+          刷新链路
+        </button>
+        <p v-if="trace.busy" role="status">正在读取…</p>
+        <p v-if="trace.error" role="alert">{{ trace.error }}</p>
+        <template v-if="trace.data">
+          <p
+            v-for="notice in recordingTraceLogNotices(trace.data)"
+            :key="notice"
+            class="tiny muted"
+          >
+            {{ notice }}
+          </p>
+        </template>
+        <dl v-if="trace.data">
+          <div v-for="stage in recordingTraceStages(trace.data)" :key="stage.label">
+            <dt>{{ stage.label }}</dt>
+            <dd>
+              {{ stage.text }}<span v-if="stage.at" class="muted"> · {{ date(stage.at) }}</span>
+            </dd>
+          </div>
+        </dl>
+        <p class="tiny muted">
+          仅按需查看近期证据，无记录不等于失败。来电时间来自板子，诊断时间来自应用；接受命令不代表实际听到，Bark
+          接受不代表手机到达。
+        </p>
+      </div>
+    </div>
   </div>
 </template>

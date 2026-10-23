@@ -1,11 +1,12 @@
 <script setup>
-import { ref, reactive, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { slotView, mergeMessages, messageText, hasFormattedText, wifiName } from './presentation.js'
 import { cardFilterOptions, messageSource } from './inbox-cards.js'
 import { multipartProgress } from './multipart-progress.js'
 import { createInboxDeletion } from './inbox-delete.js'
 import CardRecords from './CardRecords.vue'
 import InfoTip from './InfoTip.vue'
+import { startVisiblePolling, needsInboxRefresh } from './visible-polling.js'
 import CardPushControls from './CardPushControls.vue'
 import RecordingSettings from './RecordingSettings.vue'
 import SystemSettings from './SystemSettings.vue'
@@ -228,7 +229,11 @@ async function refresh(reset = false, force = false) {
   const version = generation
   loading.value = true
   try {
-    await Promise.all([loadState(), loadMessages(reset), loadNavigationCounts()])
+    await Promise.all([
+      loadState(),
+      needsInboxRefresh(tab.value, !!selected.value) ? loadMessages(reset) : Promise.resolve(),
+      loadNavigationCounts(),
+    ])
     if (version !== generation || stopped) return false
     error.value = ''
     return true
@@ -393,11 +398,14 @@ function closeMessage() {
   u.searchParams.delete('message')
   history.replaceState(null, '', u)
 }
+watch(tab, (value) => {
+  if (value === 'inbox' && !locked.value) void refresh(false, true)
+})
 onMounted(async () => {
   window.addEventListener('simharbor:recording-played', loadNavigationCounts)
   window.addEventListener('simharbor:recording-deleted', loadNavigationCounts)
-  interval = setInterval(() => {
-    if (!locked.value) refresh()
+  interval = startVisiblePolling(() => {
+    if (!locked.value) return refresh()
   }, 15000)
   clock = setInterval(() => (now.value = Date.now() / 1000), 1000)
   await refresh(true)
@@ -407,7 +415,7 @@ onUnmounted(() => {
   window.removeEventListener('simharbor:recording-played', loadNavigationCounts)
   window.removeEventListener('simharbor:recording-deleted', loadNavigationCounts)
   stopped = true
-  clearInterval(interval)
+  interval?.()
   clearInterval(clock)
 })
 </script>

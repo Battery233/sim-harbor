@@ -3,7 +3,6 @@ package store
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"strings"
 	"time"
 
@@ -86,17 +85,8 @@ func ingestCall(ctx context.Context, tx *sql.Tx, e protocol.Event, raw []byte, n
 	if err != nil {
 		return err
 	}
-	identity := any(iccid)
-	if iccid == "" {
-		identity = int(e.Slot)
-	}
 	phone := strings.TrimSpace(e.Phone)
-	keyData, _ := json.Marshal([]any{e.DeviceID, identity, int64(e.TelStartTS), phone})
-	if e.TelStartTS == 0 {
-		// Missing start cannot safely be merged with another call by slot/phone.
-		keyData, _ = json.Marshal([]any{e.DeviceID, "unknown-start", hash(raw)})
-	}
-	key := hash(keyData)
+	key := CallEventKey(e, raw)
 	deadline := int64(0)
 	if e.Type == 601 && e.TelStartTS > 0 && notify && !voicemail {
 		deadline = now + CallTimeoutSeconds

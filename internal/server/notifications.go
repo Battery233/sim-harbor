@@ -21,6 +21,9 @@ func (s *Server) pushNotification(ctx context.Context, n store.Notification) (bo
 	}
 	if n.CallID > 0 {
 		fields.Operation = diagnostics.Reference("call-notification:" + strconv.FormatInt(n.ID, 10))
+		lookup, cancel := context.WithTimeout(ctx, 50*time.Millisecond)
+		fields.CallReference = callReference(s.Store.DiagnosticCallKey(lookup, s.Config.DeviceID, n.CallID))
+		cancel()
 	}
 	s.Logs.Record("notification_attempt", fields)
 	started := time.Now()

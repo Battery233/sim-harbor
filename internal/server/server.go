@@ -78,6 +78,7 @@ type Server struct {
 	wg                   sync.WaitGroup
 	client               *http.Client
 	voicemailIngress     voicemailIngress
+	voicemailRejects     voicemailRejections
 }
 
 func New(c config.Config, s *store.Store, logs ...*diagnostics.Recorder) *Server {

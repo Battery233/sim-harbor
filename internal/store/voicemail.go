@@ -176,16 +176,22 @@ func (s *Store) checkVoicemailCapacity(ctx context.Context, dataDir string, inco
 	if err := s.DB.QueryRowContext(ctx, `SELECT count(*) FROM voicemails`).Scan(&count); err != nil {
 		return err
 	}
-	if count >= 10000 || incoming > maximum {
-		return ErrVoicemailCapacity
+	if count >= VoicemailIndexLimit {
+		return &VoicemailCapacityError{Reason: "records"}
+	}
+	if incoming > maximum {
+		return &VoicemailCapacityError{Reason: "bytes"}
 	}
 
 	used, entries, err := scanVoicemailUsage(ctx, dataDir)
 	if err != nil {
 		return err
 	}
-	if entries >= 10000 || used > maximum-incoming {
-		return ErrVoicemailCapacity
+	if entries >= VoicemailDirectoryLimit {
+		return &VoicemailCapacityError{Reason: "files"}
+	}
+	if used > maximum-incoming {
+		return &VoicemailCapacityError{Reason: "bytes"}
 	}
 	return nil
 }
@@ -226,8 +232,8 @@ func scanVoicemailUsage(ctx context.Context, dataDir string) (used int64, entrie
 		}
 		for _, entry := range batch {
 			entries++
-			if entries > 10000 {
-				return 0, 0, ErrVoicemailCapacity
+			if entries > VoicemailDirectoryLimit {
+				return used, entries, &VoicemailCapacityError{Reason: "files"}
 			}
 			info, e := entry.Info()
 			if e != nil {

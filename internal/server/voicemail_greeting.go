@@ -7,12 +7,14 @@ import (
 
 	"github.com/Battery233/sim-harbor/internal/diagnostics"
 	"github.com/Battery233/sim-harbor/internal/protocol"
+	"github.com/Battery233/sim-harbor/internal/store"
 )
 
 type greetingJob struct {
 	Slot      int
 	Start     int64
 	Connected int64
+	Reference string
 }
 
 func (s *Server) claimVoicemailGreeting(e protocol.Event) (greetingJob, bool) {
@@ -29,7 +31,7 @@ func (s *Server) claimVoicemailGreeting(e protocol.Event) (greetingJob, bool) {
 	if !selected {
 		return greetingJob{}, false
 	}
-	job := greetingJob{Slot: slot, Start: int64(e.TelStartTS), Connected: int64(*e.TelConnectedTS)}
+	job := greetingJob{Reference: callReference(store.CallEventKey(e, nil)), Slot: slot, Start: int64(e.TelStartTS), Connected: int64(*e.TelConnectedTS)}
 	key := strconv.Itoa(slot) + ":" + strconv.FormatInt(job.Start, 10) + ":" + strconv.FormatInt(job.Connected, 10)
 	s.greetingMu.Lock()
 	defer s.greetingMu.Unlock()
@@ -58,29 +60,29 @@ func (s *Server) playVoicemailGreeting(sess *session, job greetingJob, text stri
 	same := s.active == sess
 	s.mu.Unlock()
 	if !same {
-		s.skipVoicemailGreeting(sess, job.Slot, "device_connection_changed")
+		s.skipVoicemailGreeting(sess, job.Slot, job.Reference, "device_connection_changed")
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	reason, err := s.Store.AnsweredCallStillCurrent(ctx, s.Config.DeviceID, job.Slot, job.Start, job.Connected)
 	if err != nil {
-		s.skipVoicemailGreeting(sess, job.Slot, "database_unavailable")
+		s.skipVoicemailGreeting(sess, job.Slot, job.Reference, "database_unavailable")
 		return
 	}
 	if reason != "" {
-		s.skipVoicemailGreeting(sess, job.Slot, reason)
+		s.skipVoicemailGreeting(sess, job.Slot, job.Reference, reason)
 		return
 	}
 	if problem := s.writeVoicemailGreeting(sess, job.Slot, text); problem != "" {
-		s.Logs.Record("voicemail_greeting_failed", diagnostics.Fields{Session: sess.diagnosticID, Slot: job.Slot, Outcome: problem})
+		s.Logs.Record("voicemail_greeting_failed", diagnostics.Fields{CallReference: job.Reference, Session: sess.diagnosticID, Slot: job.Slot, Outcome: problem})
 		return
 	}
-	s.Logs.Record("voicemail_greeting", diagnostics.Fields{Session: sess.diagnosticID, Slot: job.Slot, SubType: 26})
+	s.Logs.Record("voicemail_greeting", diagnostics.Fields{CallReference: job.Reference, Session: sess.diagnosticID, Slot: job.Slot, SubType: 26})
 }
 
-func (s *Server) skipVoicemailGreeting(sess *session, slot int, outcome string) {
-	s.Logs.Record("voicemail_greeting_skipped", diagnostics.Fields{Session: sess.diagnosticID, Slot: slot, Outcome: outcome})
+func (s *Server) skipVoicemailGreeting(sess *session, slot int, reference, outcome string) {
+	s.Logs.Record("voicemail_greeting_skipped", diagnostics.Fields{CallReference: reference, Session: sess.diagnosticID, Slot: slot, Outcome: outcome})
 }
 
 func (s *Server) writeVoicemailGreeting(sess *session, slot int, text string) string {

@@ -23,6 +23,7 @@ type unlinkedVoicemailView struct {
 }
 
 func (s *Server) unlinkedVoicemailRoutes(mux *http.ServeMux) {
+	s.recordingTraceRoutes(mux)
 	mux.HandleFunc("POST /api/voicemails/{media}/played", func(w http.ResponseWriter, r *http.Request) {
 		var in struct{}
 		if !decodeAction(w, r, &in) {
@@ -97,12 +98,16 @@ func (s *Server) unlinkedVoicemailRoutes(mux *http.ServeMux) {
 		reply(w, 200, map[string]bool{"deleted": true})
 	})
 	mux.HandleFunc("GET /api/voicemails/storage", func(w http.ResponseWriter, r *http.Request) {
-		used, files, err := s.Store.VoicemailDirectoryStats(r.Context(), s.Config.DataDir)
+		stats, err := s.Store.VoicemailStorage(r.Context(), s.Config.DataDir)
 		if err != nil {
 			reply(w, 503, map[string]string{"error": "voicemail_storage_unavailable"})
 			return
 		}
-		reply(w, 200, map[string]any{"files": files, "bytes": used, "limit_bytes": s.Config.VoicemailStorageLimit(), "limited": s.Config.VoicemailMode() == "public"})
+		reply(w, 200, struct {
+			store.VoicemailStorage
+			LimitBytes int64 `json:"limit_bytes"`
+			Limited    bool  `json:"limited"`
+		}{stats, s.Config.VoicemailStorageLimit(), s.Config.VoicemailMode() == "public"})
 	})
 	mux.HandleFunc("GET /api/voicemails/unlinked", func(w http.ResponseWriter, r *http.Request) {
 		before, err := callCursor(r)

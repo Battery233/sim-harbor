@@ -1,4 +1,5 @@
 <script setup>
+import { startVisiblePolling } from './visible-polling.js'
 import InfoTip from './InfoTip.vue'
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { createOutboxFlow, phaseLabels, deliveryLabels } from './outbox-flow.js'
@@ -165,7 +166,7 @@ onMounted(async () => {
       key: 'sim-outgoing:' + props.state.device_id,
     })
     sync()
-    timer = setInterval(refresh, 5000)
+    timer = startVisiblePolling(refresh, 5000)
     await refresh() // GET only; no automatic prepare or confirm.
   } catch {
     error.value = '浏览器无法保存操作标识，已禁用发送。请允许此站点本地存储。'
@@ -173,7 +174,7 @@ onMounted(async () => {
 })
 onUnmounted(() => {
   stopped = true
-  clearInterval(timer)
+  timer?.()
   history.dispose()
 })
 </script>

@@ -1,4 +1,5 @@
 <script setup>
+import { startVisiblePolling } from './visible-polling.js'
 import InfoTip from './InfoTip.vue'
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { cardFilterOptions, messageSource } from './inbox-cards.js'
@@ -195,7 +196,7 @@ async function filter() {
   }
 }
 onMounted(async () => {
-  timer = setInterval(() => refresh(), 5000)
+  timer = startVisiblePolling(refresh, 5000)
   await refresh()
   if (props.linkedId) {
     const version = linkRevision
@@ -219,7 +220,7 @@ onMounted(async () => {
 onUnmounted(() => {
   stopped = true
   linkRevision++
-  clearInterval(timer)
+  timer?.()
   player.dispose()
   history.dispose()
   clearDetails()

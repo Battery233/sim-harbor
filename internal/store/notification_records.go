@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"strconv"
+	"strings"
 )
 
 type NotificationRecord struct {
@@ -61,18 +62,23 @@ func checkedRecordCursor(value string) (notificationRecordCursor, error) {
 
 // Type plus ID disambiguates independently numbered SMS and call tasks. Sort
 // by a stable record time and a complete tie-breaker, never mutable push state.
-const notificationRecordsCTE = `WITH records AS (
- SELECT n.id,'sms' source,'sms' kind,n.message_id,0 call_id,m.slot,n.state,n.attempts,n.next_at,n.last_error,n.manual_retry_at,m.deleted_at>0 message_deleted,max(0,m.sms_ts) recorded_at,n.accepted_at,'' system_key,0 used_bytes,0 limit_bytes
- FROM notifications n JOIN messages m ON m.id=n.message_id
- UNION ALL
- SELECT n.id,'call',n.kind,0,n.call_id,c.slot,n.state,n.attempts,n.next_at,n.last_error,0,0,max(0,CASE WHEN n.created_at>0 THEN n.created_at ELSE c.start_ts END),n.accepted_at,'',0,0
- FROM call_notifications n JOIN calls c ON c.id=n.call_id
- UNION ALL
- SELECT n.id,'status',CASE WHEN n.kind='fault' THEN 'status_fault' ELSE 'status_recovery' END,0,0,CASE n.key WHEN 'sim1' THEN 1 WHEN 'sim2' THEN 2 ELSE 0 END,n.state,n.attempts,n.next_at,n.last_error,0,0,max(0,n.created_at),n.accepted_at,n.key,0,0
- FROM status_alert_jobs n
- UNION ALL
- SELECT id,'capacity',kind,0,0,0,state,attempts,next_at,last_error,0,0,created_at,accepted_at,'voicemail',used_bytes,limit_bytes FROM system_notifications
-) `
+var notificationRecordStreams = []string{
+	` SELECT n.id,'sms' source,'sms' kind,n.message_id,0 call_id,m.slot,n.state,n.attempts,n.next_at,n.last_error,n.manual_retry_at,m.deleted_at>0 message_deleted,max(0,m.sms_ts) recorded_at,n.accepted_at,'' system_key,0 used_bytes,0 limit_bytes
+ FROM notifications n JOIN messages m ON m.id=n.message_id`,
+	` SELECT n.id,'call',n.kind,0,n.call_id,c.slot,n.state,n.attempts,n.next_at,n.last_error,0,0,max(0,CASE WHEN n.created_at>0 THEN n.created_at ELSE c.start_ts END),n.accepted_at,'',0,0
+ FROM call_notifications n JOIN calls c ON c.id=n.call_id`,
+	` SELECT n.id,'status',CASE WHEN n.kind='fault' THEN 'status_fault' ELSE 'status_recovery' END,0,0,CASE n.key WHEN 'sim1' THEN 1 WHEN 'sim2' THEN 2 ELSE 0 END,n.state,n.attempts,n.next_at,n.last_error,0,0,max(0,n.created_at),n.accepted_at,n.key,0,0
+ FROM status_alert_jobs n`,
+	` SELECT id,'capacity',kind,0,0,0,state,attempts,next_at,last_error,0,0,created_at,accepted_at,'voicemail',used_bytes,limit_bytes FROM system_notifications`,
+}
+
+func notificationRecordsProjection(source string) string {
+	streams := []string{}
+	for _, i := range notificationSourceStreams(source) {
+		streams = append(streams, notificationRecordStreams[i])
+	}
+	return "WITH records(id,source,kind,message_id,call_id,slot,state,attempts,next_at,last_error,manual_retry_at,message_deleted,recorded_at,accepted_at,system_key,used_bytes,limit_bytes) AS (" + strings.Join(streams, " UNION ALL ") + ") "
+}
 
 // "all" retains the existing SMS+call filter; "everything" includes system tasks.
 const notificationSourceFilter = ` (?='everything' OR (?='all' AND source IN ('sms','call')) OR (?='system' AND source IN ('status','capacity')) OR source=?) `
@@ -91,14 +97,14 @@ func (s *Store) NotificationRecords(ctx context.Context, state, source, before s
 		return nil, summary, err
 	}
 	defer tx.Rollback()
-	if err = tx.QueryRowContext(ctx, notificationRecordsCTE+`SELECT coalesce(sum(state='pending'),0),coalesce(sum(state='pending' AND attempts>0),0),coalesce(sum(state='sent'),0),coalesce(sum(state='restore_held'),0) FROM records WHERE `+notificationSourceFilter, source, source, source, source).Scan(&summary.Pending, &summary.Retrying, &summary.Accepted, &summary.Held); err != nil {
+	if err = tx.QueryRowContext(ctx, notificationCountsSQL(source, false)).Scan(&summary.Pending, &summary.Retrying, &summary.Accepted, &summary.Held); err != nil {
 		return nil, summary, err
 	}
 	err = tx.QueryRowContext(ctx, `SELECT requested_at,outcome FROM notification_test WHERE id=1`).Scan(&summary.TestAt, &summary.TestOutcome)
 	if err != nil && err != sql.ErrNoRows {
 		return nil, summary, err
 	}
-	rows, err := tx.QueryContext(ctx, notificationRecordsCTE+`SELECT id,source,kind,message_id,call_id,slot,state,attempts,next_at,last_error,manual_retry_at,message_deleted,recorded_at,accepted_at,system_key,used_bytes,limit_bytes FROM records WHERE `+notificationSourceFilter+` AND (?='all' OR state=?) AND (?='' OR (recorded_at,source,id)<(?,?,?)) ORDER BY recorded_at DESC,source DESC,id DESC LIMIT 51`, source, source, source, source, state, state, before, cursor.At, cursor.Source, cursor.ID)
+	rows, err := tx.QueryContext(ctx, notificationRecordsProjection(source)+`SELECT id,source,kind,message_id,call_id,slot,state,attempts,next_at,last_error,manual_retry_at,message_deleted,recorded_at,accepted_at,system_key,used_bytes,limit_bytes FROM records WHERE `+notificationSourceFilter+` AND (?='all' OR state=?) AND (?='' OR (recorded_at,source,id)<(?,?,?)) ORDER BY recorded_at DESC,source DESC,id DESC LIMIT 51`, source, source, source, source, state, state, before, cursor.At, cursor.Source, cursor.ID)
 	if err != nil {
 		return nil, summary, err
 	}

@@ -1,0 +1,77 @@
+name: Checks
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: checks-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  repository:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      backend: ${{ steps.check.outputs.backend }}
+      frontend: ${{ steps.check.outputs.frontend }}
+      node: ${{ steps.check.outputs.node }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: check
+        name: Check versions, local links and changed scopes
+        env:
+          CI_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: python3 tools/ci_check.py
+      - run: python3 -m unittest discover -s tools -p 'test_*.py'
+  backend:
+    needs: repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        if: needs.repository.outputs.backend == 'true'
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        if: needs.repository.outputs.backend == 'true'
+        with:
+          go-version-file: go.mod
+      - name: Race tests and vet
+        if: needs.repository.outputs.backend == 'true'
+        env:
+          GOTOOLCHAIN: local
+        run: |
+          go test -race ./...
+          go vet ./...
+      - if: needs.repository.outputs.backend != 'true'
+        run: echo 'No backend changes to test.'
+  frontend:
+    needs: repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        if: needs.repository.outputs.frontend == 'true'
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        if: needs.repository.outputs.frontend == 'true'
+        with:
+          node-version: ${{ needs.repository.outputs.node }}
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Tests, formatting and build
+        if: needs.repository.outputs.frontend == 'true'
+        run: |
+          npm --prefix web ci
+          npm --prefix web test
+          npm --prefix web run format:check
+          npm --prefix web run build
+      - if: needs.repository.outputs.frontend != 'true'
+        run: echo 'No frontend changes to test.'

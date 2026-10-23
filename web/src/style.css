@@ -1457,6 +1457,7 @@ button.danger {
 
 .recording-storage {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
@@ -1464,6 +1465,14 @@ button.danger {
   padding: 16px;
   border-radius: 12px;
   background: #edf3e7;
+}
+.recording-storage > div {
+  flex: 1 1 280px;
+  min-width: 0;
+}
+.recording-storage > button {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 .recording-storage p {
   margin: 6px 0;
@@ -1570,4 +1579,29 @@ button.danger {
   line-height: 18px;
   font-weight: 700;
   text-align: center;
+}
+
+.recording-trace {
+  border-left: 2px solid var(--border, #dce2d8);
+  padding: 8px 0 8px 14px;
+  margin: 8px 0 16px;
+}
+.recording-trace dl {
+  margin: 10px 0;
+}
+.recording-trace dl > div {
+  margin: 8px 0;
+}
+.recording-trace dt {
+  font-weight: 600;
+}
+.recording-trace dd {
+  margin: 2px 0 0;
+  font-size: 13px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.recording-activity-row > p > button {
+  margin-left: 8px;
+  padding: 4px 8px;
 }

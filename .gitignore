@@ -26,6 +26,7 @@ sim-inbox*.csv
 node_modules/
 dist/
 coverage/
+__pycache__/
 bin/
 configs/*.private.json
 system.private.json

@@ -484,7 +484,7 @@ func (s *Store) State(ctx context.Context, id string) (map[string]any, error) {
 		return nil, e
 	}
 	var pending, failed int
-	if e = s.DB.QueryRowContext(ctx, notificationRecordsCTE+`SELECT count(*),coalesce(sum(attempts>0),0) FROM records WHERE state='pending'`).Scan(&pending, &failed); e != nil {
+	if e = s.DB.QueryRowContext(ctx, notificationCountsSQL("everything", true)).Scan(&pending, &failed); e != nil {
 		return nil, e
 	}
 	return map[string]any{"last_seen": ts, "status_received_at": statusAt, "reported": reported, "notifications_pending": pending, "notifications_retrying": failed}, nil

@@ -1,4 +1,5 @@
 <script setup>
+import { startVisiblePolling } from './visible-polling.js'
 import { reactive, ref, computed, onMounted, onUnmounted } from 'vue'
 import InfoTip from './InfoTip.vue'
 import { createBackupFlow, selectBackupFile } from './backup-flow.js'
@@ -55,12 +56,12 @@ async function remove(file) {
 let timer
 onMounted(() => {
   flow.load()
-  timer = setInterval(() => {
+  timer = startVisiblePolling(() => {
     if (running.value || current.uncertain) flow.load()
   }, 3000)
 })
 onUnmounted(() => {
-  clearInterval(timer)
+  timer?.()
   flow.dispose()
 })
 </script>

@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/Battery233/sim-harbor/internal/config"
-	"github.com/Battery233/sim-harbor/internal/diagnostics"
 	"github.com/Battery233/sim-harbor/internal/recording"
 	"github.com/Battery233/sim-harbor/internal/store"
 )
@@ -34,17 +33,19 @@ func voicemailUploadPath(path string) bool {
 
 func (s *Server) receiveVoicemail(w http.ResponseWriter, r *http.Request) {
 	if !s.Config.VoicemailEnabled {
+		s.recordVoicemailRejection("reception_disabled")
 		reply(w, 404, map[string]string{"error": "not_found"})
 		return
 	}
 	if !s.voicemailSourceOK(r) {
-		s.Logs.Record("voicemail_rejected", diagnostics.Fields{})
+		s.recordVoicemailRejection("source_rejected")
 		reply(w, 403, map[string]string{"error": "voicemail_source_rejected"})
 		return
 	}
 	public := s.Config.VoicemailMode() == "public"
 	if public {
 		if !s.voicemailIngress.admit(time.Now()) {
+			s.recordVoicemailRejection("upload_busy")
 			w.Header().Set("Retry-After", "1")
 			reply(w, 429, map[string]string{"error": "voicemail_upload_busy"})
 			return
@@ -54,13 +55,13 @@ func (s *Server) receiveVoicemail(w http.ResponseWriter, r *http.Request) {
 	expected, ok := config.VoicemailUploadToken(s.Config.VoicemailAMRURL, s.Config.VoicemailMode())
 	got := strings.TrimPrefix(r.URL.Path, "/api/voicemail/amr/")
 	if !ok || len(got) != len(expected) || subtle.ConstantTimeCompare([]byte(got), []byte(expected)) != 1 {
-		s.Logs.Record("voicemail_rejected", diagnostics.Fields{})
+		s.recordVoicemailRejection("token_rejected")
 		reply(w, 401, map[string]string{"error": "voicemail_upload_rejected"})
 		return
 	}
 	audio, slot, phone, start, problem := readVoicemailUpload(r)
 	if problem != "" {
-		s.Logs.Record("voicemail_rejected", diagnostics.Fields{Slot: slot})
+		s.recordVoicemailRejection("media_rejected")
 		reply(w, 400, map[string]string{"error": problem})
 		return
 	}
@@ -70,18 +71,23 @@ func (s *Server) receiveVoicemail(w http.ResponseWriter, r *http.Request) {
 	if public {
 		limit = s.Config.VoicemailStorageLimit()
 	}
-	mediaID, createdAt, _, err := s.Store.SaveVoicemail(r.Context(), s.Config.DataDir, audio, slot, phone, start, time.Now().Unix(), limit)
+	mediaID, createdAt, duplicate, err := s.Store.SaveVoicemail(r.Context(), s.Config.DataDir, audio, slot, phone, start, time.Now().Unix(), limit)
 	if errors.Is(err, store.ErrVoicemailCapacity) {
-		s.Logs.Record("voicemail_capacity", diagnostics.Fields{})
-		reply(w, 507, map[string]string{"error": "voicemail_storage_full"})
+		reason := "bytes"
+		var capacity *store.VoicemailCapacityError
+		if errors.As(err, &capacity) {
+			reason = capacity.Reason
+		}
+		s.recordVoicemailRejection("capacity_" + reason)
+		reply(w, 507, map[string]string{"error": "voicemail_storage_full", "reason": reason})
 		return
 	}
 	if err != nil || mediaID == "" {
-		s.Logs.Record("voicemail_rejected", diagnostics.Fields{Slot: slot})
+		s.recordVoicemailRejection("store_failed")
 		reply(w, 503, map[string]string{"error": "database_unavailable"})
 		return
 	}
-	s.Logs.Record("voicemail_stored", diagnostics.Fields{Slot: slot})
+	s.recordRecordingStored(r.Context(), mediaID, slot, duplicate)
 	reply(w, 200, map[string]any{"errcode": 0, "errmsg": "success", "type": "amr", "media_id": mediaID, "created_at": createdAt})
 }
 

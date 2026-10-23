@@ -86,7 +86,7 @@ onUnmounted(() => flow.dispose())
         }}</span>
       </div>
       <p class="muted tiny">
-        查看连接原因和命令阶段。最终发送状态请查看发件箱，通知任务请查看“短信与通话推送”。
+        查看连接原因和命令阶段。最终发送状态请查看发件箱，通知任务请查看“推送记录”。
       </p>
       <div class="notification-summary">
         <span>日志级别 {{ view.data ? names[view.data.status.level] : '—' }}</span>
@@ -199,7 +199,14 @@ onUnmounted(() => flow.dispose())
                 >
               </p>
               <dl
-                v-if="record.session || record.operation || record.transaction || record.sms_group"
+                v-if="
+                  record.session ||
+                  record.operation ||
+                  record.transaction ||
+                  record.sms_group ||
+                  record.call_ref ||
+                  record.media_ref
+                "
                 class="diagnostic-refs"
               >
                 <div v-if="record.session">
@@ -217,6 +224,14 @@ onUnmounted(() => flow.dispose())
                 <div v-if="record.sms_group">
                   <dt>匿名短信组</dt>
                   <dd>{{ record.sms_group }}</dd>
+                </div>
+                <div v-if="record.call_ref">
+                  <dt>通话关联摘要</dt>
+                  <dd>{{ record.call_ref }}</dd>
+                </div>
+                <div v-if="record.media_ref">
+                  <dt>录音关联摘要</dt>
+                  <dd>{{ record.media_ref }}</dd>
                 </div>
               </dl>
             </div>

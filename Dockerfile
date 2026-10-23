@@ -19,7 +19,7 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/sim-data ./cmd/mai
 
 FROM scratch
 LABEL org.opencontainers.image.title="SIMHarbor" \
-      org.opencontainers.image.version="1.1.3" \
+      org.opencontainers.image.version="1.1.4" \
       org.opencontainers.image.source="https://github.com/Battery233/sim-harbor"
 WORKDIR /app
 ENV TMPDIR=/data

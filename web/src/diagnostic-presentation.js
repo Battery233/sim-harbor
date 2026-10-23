@@ -2,6 +2,10 @@ import { diagnosticOutcomes } from './diagnostic-flow.js'
 
 const queryCodes = new Set(['query_started', 'query_completed', 'query_failed'])
 const titles = {
+  call_report: '收到来电状态上报',
+  voicemail_rejected: '录音上传未接受',
+  voicemail_capacity: '录音接收触及保护限制',
+  voicemail_stored: '录音上传已处理',
   sms_fragment_received: '收到长短信上报，正在保存',
   sms_fragment_stored: '长短信上报已处理',
   sms_fragment_rejected: '长短信上报未能保存',
@@ -105,6 +109,10 @@ function describe(row) {
     return { title: '板子返回了命令回执', explanation: '尚不能确认这条命令的最终结果。' }
   }
   const explanations = {
+    voicemail_rejected: diagnosticOutcomes[row.outcome] || '请核对接收配置或板子日志。',
+    voicemail_capacity: diagnosticOutcomes[row.outcome] || '录音接收达到保护上限。',
+    voicemail_stored:
+      diagnosticOutcomes[row.outcome] || '录音已保存；是否关联请查看来电或未关联录音。',
     sms_fragment_received: '这条记录只表示收到上报，保存结果请看后续记录。',
     sms_fragment_stored: '分片是否收齐请查看收件箱中的组装进度。',
     sms_fragment_rejected: diagnosticOutcomes[row.outcome] || '已有分片仍保留，请查看技术详情。',
@@ -116,8 +124,8 @@ function describe(row) {
     sms_result_persistence_failed: '请核对原操作，应用不会因此补发短信。',
     sms_report_received: '提交与送达是不同阶段，最终结果请看发件箱。',
     notification_accepted: '请在 iPhone 上确认是否收到。',
-    notification_failed: diagnosticOutcomes[row.outcome] || '请查看“短信与通话推送”中的任务结果。',
-    notification_persistence_failed: '后续重试可能重复通知，请查看“短信与通话推送”。',
+    notification_failed: diagnosticOutcomes[row.outcome] || '请查看“推送记录”中的任务结果。',
+    notification_persistence_failed: '后续重试可能重复通知，请查看“推送记录”。',
   }
   return {
     title: Object.hasOwn(titles, row.code) ? titles[row.code] : row.message,
