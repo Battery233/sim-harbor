@@ -289,9 +289,12 @@ func (s *Store) Ingest(ctx context.Context, e protocol.Event, raw []byte, notify
 	}
 	defer tx.Rollback()
 	now := time.Now().Unix()
-	_, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO events VALUES(?,?,?)`, hash(raw), int(e.Type), now)
-	if err != nil {
-		return err
+	// Routine liveness/status reports update current state below. Their legacy
+	// event hashes are not used for deduplication or diagnostics.
+	if e.Type != 998 && !(e.Type == 402 && e.SubType == 46) {
+		if _, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO events VALUES(?,?,?)`, hash(raw), int(e.Type), now); err != nil {
+			return err
+		}
 	}
 	_, err = tx.ExecContext(ctx, `INSERT INTO device(id,last_seen) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET last_seen=excluded.last_seen`, e.DeviceID, now)
 	if err != nil {

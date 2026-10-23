@@ -89,7 +89,14 @@ export function recordingTraceStages(data) {
       }[played.event_type] || '收到播放报告')
   const upload = last(['voicemail_upload_report', 'voicemail_upload_failed'])
   return [
-    { label: '来电', text: callStates[c.state], at: c.ended_at || c.connected_at || c.started_at },
+    {
+      label: '来电',
+      text:
+        c.state === 'connected' && c.ended_at === 0
+          ? callStates[c.state] + '；尚未收到结束上报'
+          : callStates[c.state],
+      at: c.ended_at || c.connected_at || c.started_at,
+    },
     {
       label: '提示语',
       text: greetingText,

@@ -49,6 +49,18 @@ test('缺少诊断不当失败，板子上传报告与实际保存分开表达',
   assert.match(stages[2].text, /报告上传失败/)
   assert.match(stages[3].text, /已保存并关联/)
 })
+test('接通报告缺少结束上报时明确说明，不推断仍在通话或已经结束', () => {
+  const d = data()
+  d.call.state = 'connected'
+  d.call.ended_at = 0
+  const stage = recordingTraceStages(d)[0]
+  assert.match(stage.text, /已接通（设备报告）/)
+  assert.match(stage.text, /尚未收到结束上报/)
+  assert.equal(stage.at, d.call.connected_at)
+  assert.equal(d.call.state, 'connected')
+  assert.equal(d.call.ended_at, 0)
+  assert.equal(recordingTraceStages(data())[0].text, '已接通并结束')
+})
 test('链路只读，关闭、换来电、离开页面后旧响应不覆盖新记录', async () => {
   const pending = [],
     calls = []

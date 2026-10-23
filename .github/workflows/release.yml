@@ -16,9 +16,9 @@ jobs:
         id: release
         shell: bash
         run: |
+          python3 -B tools/ci_check.py
           release_version="${GITHUB_REF_NAME#v}"
           [[ "$release_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-rc\.[1-9][0-9]*)?$ ]]
-          grep -Fq "const Version = \"$release_version\"" internal/version/version.go
           test "$(node -p "require('./web/package.json').version")" = "$release_version"
           echo "version=$release_version" >> "$GITHUB_OUTPUT"
           echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"

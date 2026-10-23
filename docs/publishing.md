@@ -17,7 +17,7 @@
 
 [Checks 工作流](../.github/workflows/ci.yml)在 PR、`main` 更新或手动触发时执行版本、文档与相应代码检查，不上传镜像或部署。它与标签触发的镜像发布各自保留检查结果，范围见[贡献指南](../CONTRIBUTING.md#自动检查)。
 
-标签去掉 `v` 后必须是三段数字，可带 `-rc.N` 后缀，并与后端版本、`web/package.json` 完全一致，否则工作流停止。构建验证通过后，工作流使用 `GITHUB_TOKEN` 的 `packages: write` 权限上传 `ghcr.io/<仓库所有者>/<仓库名>:<版本>`，同时提供 `linux/amd64` 和 `linux/arm64`；不会生成 `latest` 标签或执行实例部署。包可见性及外部拉取权限需在 GitHub Packages 中单独核对。
+镜像发布前复用 `tools/ci_check.py`，核对后端、前端包及锁文件、Docker 标签、Compose 默认镜像与工具链版本，并检查仓库内文档链接。标签去掉 `v` 后须与通过检查的应用版本一致，版本可带 `-rc.N` 后缀；检查失败时停止发布。构建验证通过后，工作流使用 `GITHUB_TOKEN` 的 `packages: write` 权限上传 `ghcr.io/<仓库所有者>/<仓库名>:<版本>`，同时提供 `linux/amd64` 和 `linux/arm64`；不会生成 `latest` 标签或执行实例部署。包可见性及外部拉取权限需在 GitHub Packages 中单独核对。
 
 ## 发布顺序
 
