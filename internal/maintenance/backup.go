@@ -518,6 +518,10 @@ func load(ctx context.Context, path string) (*validated, error) {
 		if e = ctx.Err(); e != nil {
 			return nil, e
 		}
+		// Reject traversal in the raw name, before normalization or filesystem use.
+		if strings.Contains(f.Name, "..") || !filepath.IsLocal(f.Name) {
+			return nil, ErrInvalidBackup
+		}
 		if seen[f.Name] || !f.Mode().IsRegular() || (f.Name != "manifest.json" && f.Name != "sim.db" && !recordingArchiveName(f.Name)) {
 			return nil, ErrInvalidBackup
 		}
@@ -549,30 +553,13 @@ func load(ctx context.Context, path string) (*validated, error) {
 		} else {
 			destination := v.database
 			if recordingArchiveName(f.Name) {
-				entryName := filepath.Clean(filepath.FromSlash(f.Name))
-				if entryName == "." || entryName == ".." || filepath.IsAbs(entryName) ||
-					strings.HasPrefix(entryName, ".."+string(os.PathSeparator)) {
+				destination = filepath.Join(v.root, filepath.FromSlash(f.Name))
+				// Independently require the joined destination to be below this workspace.
+				relative, ae := filepath.Rel(v.root, destination)
+				if ae != nil || relative == "." || !filepath.IsLocal(relative) {
 					reader.Close()
 					return nil, ErrInvalidBackup
 				}
-				destination = filepath.Join(v.root, entryName)
-				rootPath, ae := filepath.Abs(v.root)
-				if ae != nil {
-					reader.Close()
-					return nil, ae
-				}
-				destPath, ae := filepath.Abs(destination)
-				if ae != nil {
-					reader.Close()
-					return nil, ErrInvalidBackup
-				}
-				rootPath = filepath.Clean(rootPath)
-				destPath = filepath.Clean(destPath)
-				if destPath != rootPath && !strings.HasPrefix(destPath, rootPath+string(os.PathSeparator)) {
-					reader.Close()
-					return nil, ErrInvalidBackup
-				}
-				destination = destPath
 				if e = os.MkdirAll(filepath.Dir(destination), 0700); e != nil {
 					reader.Close()
 					return nil, e
