@@ -2,7 +2,7 @@
 
 从日常归档到本地/云端迁移，SIMHarbor 提供短信导出、一致备份、完整性检查和受控恢复，让数据随自己的部署选择流转。
 
-本文以 v1.1.4 为准，镜像使用方式见[版本维护](releases.md)。本版与 v1.1.2、v1.1.3 同为 schema 21，支持格式 1 和含录音的格式 2 ZIP，升级无需新增迁移或补填配置。v1.1.1 使用 schema 20、格式 1 ZIP，首次升级到当前版会自动迁移；v1.1.1 及更早程序不能直接打开新库，回退需使用兼容的升级前数据库。恢复会清除旧等待截止时间并暂停旧任务，避免补推历史来电。
+本文以 v1.1.5 为准，镜像使用方式见[版本维护](releases.md)。本版与 v1.1.2、v1.1.3、v1.1.4 同为 schema 21，支持格式 1 和含录音的格式 2 ZIP，升级无需新增迁移或补填配置。v1.1.1 使用 schema 20、格式 1 ZIP，首次升级到当前版会自动迁移；v1.1.1 及更早程序不能直接打开新库，回退需使用兼容的升级前数据库。恢复会清除旧等待截止时间并暂停旧任务，避免补推历史来电。
 
 ## 选择导出或备份
 
@@ -67,7 +67,7 @@ ZIP 内含 `sim.db` 与 `manifest.json`；manifest 记录数据库摘要、版�
 | v1.0.4 | 17 | 格式 1，增加分片上报关联 |
 | v1.1.0 | 19 | 格式 1，包含录音索引，不含 AMR |
 | v1.1.1 | 20 | 格式 1，包含录音等待与通知阶段，不含 AMR |
-| v1.1.2～v1.1.4 | 21 | 默认格式 1；勾选录音为格式 2，同时还原 AMR |
+| v1.1.2～v1.1.5 | 21 | 默认格式 1；勾选录音为格式 2，同时还原 AMR |
 
 格式 1 只有录音索引，单独保存的 `voicemail/` 需放回新数据目录；没有文件时页面会提示缺失。格式 2 同时还原数据库、录音和播放状态，但不会为目录内未入库文件伪造关联。恢复还原的是备份时点：备份之后才删除的录音可能随旧快照恢复，不代表删除操作失败。
 
@@ -116,7 +116,7 @@ GOTOOLCHAIN=local go run ./cmd/maintain backup \
 docker run --rm --network none --read-only \
   --tmpfs /data:rw,uid=65532,gid=65532,mode=0700,size=2048m \
   --mount type=bind,src=/srv/sim-backups,dst=/backup,readonly \
-  --entrypoint /app/sim-data sim-harbor:1.1.4 \
+  --entrypoint /app/sim-data sim-harbor:1.1.5 \
   inspect -backup /backup/sim-backup.zip
 ```
 
@@ -126,7 +126,7 @@ docker run --rm --network none --read-only \
 docker run --rm --network none --read-only \
   --mount type=bind,src=/srv/sim-maintain-tmp,dst=/data \
   --mount type=bind,src=/srv/sim-backups,dst=/backup,readonly \
-  --entrypoint /app/sim-data sim-harbor:1.1.4 \
+  --entrypoint /app/sim-data sim-harbor:1.1.5 \
   inspect -backup /backup/sim-backup.zip
 ```
 
@@ -144,7 +144,7 @@ docker volume inspect sim_sim-data --format '{{.Name}}'
 docker run --rm --network none --read-only \
   --mount type=bind,src=/srv/sim-backups,dst=/backup,readonly \
   --mount type=volume,src=sim_sim-data,dst=/data \
-  --entrypoint /app/sim-data sim-harbor:1.1.4 \
+  --entrypoint /app/sim-data sim-harbor:1.1.5 \
   restore -backup /backup/sim-backup.zip \
   -to /data/restored-instance \
   -confirm-archive REPLACE_WITH_ARCHIVE_SHA256
@@ -154,7 +154,7 @@ docker run --rm --network none --read-only \
 
 ### 停服备份
 
-网页暂时不可用或正式迁移需要最终快照时，可以用源实例对应版本的镜像执行停服备份。下面以 `sim-harbor:1.1.4`、数据目录 `/data` 为例；如果实际目录为 `/data/storage`，调整 `-data-directory`。宿主 `/srv/sim-backups` 需允许容器 UID 65532 写入，输出文件使用尚不存在的新名称。
+网页暂时不可用或正式迁移需要最终快照时，可以用源实例对应版本的镜像执行停服备份。下面以 `sim-harbor:1.1.5`、数据目录 `/data` 为例；如果实际目录为 `/data/storage`，调整 `-data-directory`。宿主 `/srv/sim-backups` 需允许容器 UID 65532 写入，输出文件使用尚不存在的新名称。
 
 先沿用原项目名及完整 Compose 文件停止应用；这里展示基础安装参数：
 
@@ -169,7 +169,7 @@ docker compose --env-file .env -p sim \
 docker run --rm --network none --read-only \
   --mount type=volume,src=sim_sim-data,dst=/data \
   --mount type=bind,src=/srv/sim-backups,dst=/backup \
-  --entrypoint /app/sim-data sim-harbor:1.1.4 \
+  --entrypoint /app/sim-data sim-harbor:1.1.5 \
   backup -data-directory /data -output /backup/sim-backup-final.zip
 ```
 
