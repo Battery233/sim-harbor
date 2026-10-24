@@ -1,6 +1,14 @@
 # 版本升级与维护
 
-本文说明 v1.1.5 的安装、升级和回退，Docker 镜像为 `ghcr.io/battery233/sim-harbor:1.1.5`。版本发布流程见[维护者发布指南](publishing.md)。应用在已认证的 `/api/state` 和健康接口 `/api/health` 返回 `version`，用于核对实际运行版本；直接请求受保护的健康接口返回 401，不等于容器不健康。
+本文说明 v1.1.6 的安装、升级和回退，Docker 镜像为 `ghcr.io/battery233/sim-harbor:1.1.6`。版本发布流程见[维护者发布指南](publishing.md)。应用在已认证的 `/api/state` 和健康接口 `/api/health` 返回 `version`，用于核对实际运行版本；直接请求受保护的健康接口返回 401，不等于容器不健康。
+
+## 从 v1.1.5 升级到 v1.1.6
+
+本版在来电详情和未关联录音列表展示录音总时长，同时保留文件总 KB 并移除字节换算说明。总时长按 AMR-NB 文件中的完整帧计算，包含文件里已有的提示语和静音；无法读取或格式不完整时显示“总时长未知”。展示时只读查询，不播放或改变播放标记。完整变更见[更新记录](../CHANGELOG.md#116)。
+
+**继续使用 schema 21，不新增数据库迁移或必填配置。** 沿用完整 Compose 文件、原数据卷和数据目录，将镜像改为 `ghcr.io/battery233/sim-harbor:1.1.6` 后按[切换流程](#3-核对配置并切换)重建服务。板子设置、上传地址、令牌、来源规则、Tunnel 和两种备份格式均沿用，可继续使用既有版本升级脚本；已有录音无需转换或重新上传。
+
+升级后核对实际运行版本、容器健康、历史与配置，展开已有录音查看文件大小和总时长。时长查询不改变录音、通知或恢复保护状态，普通升级无需主动拨号、发短信或恢复数据库。从更早版本升级还需核对下方相应的迁移边界。
 
 ## 从 v1.1.4 升级到 v1.1.5
 
@@ -52,9 +60,9 @@
 
 ```sh
 git fetch origin --tags
-git checkout --detach v1.1.5
-docker build --platform linux/amd64 -t sim-harbor:1.1.5 .
-docker image inspect sim-harbor:1.1.5 --format '{{.Os}}/{{.Architecture}}'
+git checkout --detach v1.1.6
+docker build --platform linux/amd64 -t sim-harbor:1.1.6 .
+docker image inspect sim-harbor:1.1.6 --format '{{.Os}}/{{.Architecture}}'
 ```
 
 需要构建指定提交时，检出对应提交并记录 SHA，便于追溯源码与镜像。
@@ -64,8 +72,8 @@ docker image inspect sim-harbor:1.1.5 --format '{{.Os}}/{{.Architecture}}'
 从 GHCR 拉取：
 
 ```sh
-docker pull ghcr.io/battery233/sim-harbor:1.1.5
-docker buildx imagetools inspect ghcr.io/battery233/sim-harbor:1.1.5
+docker pull ghcr.io/battery233/sim-harbor:1.1.6
+docker buildx imagetools inspect ghcr.io/battery233/sim-harbor:1.1.6
 ```
 
 确认包含目标架构。生产环境可进一步固定镜像清单摘要，使升级和回退目标可追溯。私有包使用具备 `read:packages` 权限的凭据在主机私密登录。
@@ -74,7 +82,7 @@ docker buildx imagetools inspect ghcr.io/battery233/sim-harbor:1.1.5
 
 下面沿用[Docker 安装](deployment-docker.md)中的项目名 `sim` 与 `deploy/site.private.yaml`。既有实例按实际参数操作，保留原项目名、全部覆盖文件、端口、数据卷和数据目录。已有 `deploy/release.private.yaml` 时，该文件始终放在最后。
 
-各版本升级小节说明相应版本的兼容性，其中镜像、页面名称和 ZIP 能力属于对应版本。升级当前版本先看[从 v1.1.4 升级到 v1.1.5](#从-v114-升级到-v115)，较早版本还需核对途经的迁移边界；不需要逐个部署中间版本。下方通用操作示例统一使用 `1.1.5`，逐条执行，任何一步失败后停止并保留现场。
+各版本升级小节说明相应版本的兼容性，其中镜像、页面名称和 ZIP 能力属于对应版本。升级当前版本先看[从 v1.1.5 升级到 v1.1.6](#从-v115-升级到-v116)，较早版本还需核对途经的迁移边界；不需要逐个部署中间版本。下方通用操作示例统一使用 `1.1.6`，逐条执行，任何一步失败后停止并保留现场。
 
 ### 从 v1.1.0 或候选版升级到 v1.1.1
 
@@ -154,7 +162,7 @@ v1.0.4 增加[允许分片时间差的组装](protocol-notes.md#允许分片时�
 ```yaml
 services:
   sim:
-    image: sim-harbor:1.1.5
+    image: sim-harbor:1.1.6
 ```
 
 使用 GHCR 时将 image 换成已验证的完整镜像引用。这个文件集中设置发布镜像，端口、配置、数据挂载与运行策略沿用原文件。旧私有文件若固定了 `sim:旧版本`，本文件必须放在最后以使新镜像生效。
@@ -180,7 +188,7 @@ docker compose --env-file .env -p sim \
 
 ### 4. 升级验收
 
-- 容器健康、镜像版本/架构正确；网页或已认证 API 的 `version` 为 `1.1.5`。
+- 容器健康、镜像版本/架构正确；网页或已认证 API 的 `version` 为 `1.1.6`。
 - 数据目录、卷、HTTP/TCP 端口及私有配置未意外变化；历史、卡名称、备注和推送开关保持。
 - 板子重连后查询新鲜状态，确认当前会话、两卡身份和注册情况。
 - 自然到达的短信能入库，按卡通知和点击链接正常；如需 Bark 连接测试，由操作者确认执行。
@@ -212,6 +220,6 @@ docker system df
 
 ## 公网录音配置的兼容性
 
-公网录音入口从 v1.1.1-rc.4 起支持，不包含在 rc.3 及更早镜像中。容量提醒去重进度单独保存在数据目录的 `voicemail-capacity.private.json`；v1.1.2 起另在数据库记录可查询的容量任务历史，随 ZIP 保存。rc.4 使用 schema 19，rc.5 与正式版 v1.1.1 使用 schema 20，v1.1.2～v1.1.5 使用 schema 21；旧配置缺少新字段时沿用局域网 HTTP，保留地址、令牌、卡槽、设备白名单和既有开关，无需为升级修改配置或板子。
+公网录音入口从 v1.1.1-rc.4 起支持，不包含在 rc.3 及更早镜像中。容量提醒去重进度单独保存在数据目录的 `voicemail-capacity.private.json`；v1.1.2 起另在数据库记录可查询的容量任务历史，随 ZIP 保存。rc.4 使用 schema 19，rc.5 与正式版 v1.1.1 使用 schema 20，v1.1.2～v1.1.6 使用 schema 21；旧配置缺少新字段时沿用局域网 HTTP，保留地址、令牌、卡槽、设备白名单和既有开关，无需为升级修改配置或板子。
 
 主动选择公网模式后，配置可能包含 `voicemail_upload_mode`、`voicemail_proxy_cidrs`、`voicemail_max_storage_mib`，rc.3 及更早版本采用严格字段校验，不能直接读取这些字段。回退前保留最新配置与录音目录，在新版先关闭应用录音接收并重启，按需另行停用板子；准备独立的旧版兼容私有配置，移除上述三个字段，并清空公网 `voicemail_amr_url`（旧版只接受局域网 HTTP）。不要把公网模式直接切回局域网但保留 HTTPS 地址后保存。配置兼容不能替代数据库兼容：从 rc.5 或 v1.1.1 及后续版本回退到 schema 19 的旧程序，还必须使用兼容旧版的升级前数据库；schema 19 也不能交给已发布的 v1.0.4。核对后再按原项目和 Compose 文件操作，不自动回退或删除录音。

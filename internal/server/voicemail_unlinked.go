@@ -24,6 +24,7 @@ type unlinkedVoicemailView struct {
 
 func (s *Server) unlinkedVoicemailRoutes(mux *http.ServeMux) {
 	s.recordingTraceRoutes(mux)
+	mux.HandleFunc("GET /api/voicemails/duration/{media}", s.voicemailDuration)
 	mux.HandleFunc("POST /api/voicemails/{media}/played", func(w http.ResponseWriter, r *http.Request) {
 		var in struct{}
 		if !decodeAction(w, r, &in) {

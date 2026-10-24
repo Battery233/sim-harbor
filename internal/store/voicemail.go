@@ -63,6 +63,12 @@ func (s *Store) VoicemailFile(ctx context.Context, callID int64) (VoicemailFile,
 	return file, err
 }
 
+func (s *Store) VoicemailMediaFile(ctx context.Context, mediaID string) (VoicemailFile, error) {
+	var file VoicemailFile
+	err := s.DB.QueryRowContext(ctx, `SELECT stored_name,size FROM voicemails WHERE media_id=? AND stored_name<>''`, mediaID).Scan(&file.Name, &file.Size)
+	return file, err
+}
+
 // SaveVoicemail stores one AMR recording. The same bytes, slot, start and size
 // return the original media id and do not queue another notification.
 func (s *Store) SaveVoicemail(ctx context.Context, dataDir string, audio []byte, slot int, phone string, start, now int64, capacity ...int64) (mediaID string, createdAt int64, duplicate bool, err error) {

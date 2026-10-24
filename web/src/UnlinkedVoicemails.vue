@@ -2,6 +2,7 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import InfoTip from './InfoTip.vue'
 import DeleteRecording from './DeleteRecording.vue'
+import RecordingDuration from './RecordingDuration.vue'
 import { callerLabel } from './call-history.js'
 import { createUnlinkedVoicemailFlow, unlinkedAudioPath } from './unlinked-voicemail.js'
 import { createVoicemailPlayer } from './voicemail-player.js'
@@ -149,7 +150,15 @@ onUnmounted(() => {
           </div>
           <div>
             <dt>文件大小</dt>
-            <dd>{{ (item.size / 1024).toFixed(1) }} KB · AMR</dd>
+            <dd>
+              {{ (item.size / 1024).toFixed(1) }} KB ·
+              <RecordingDuration
+                v-if="item.file_state === 'available'"
+                :request="request"
+                :media="item.file_name?.replace(/\.amr$/, '')"
+              />
+              <span v-else>总时长未知</span>
+            </dd>
           </div>
         </dl>
         <p class="tiny muted recording-file-name">文件名：{{ item.file_name || '文件信息异常' }}</p>

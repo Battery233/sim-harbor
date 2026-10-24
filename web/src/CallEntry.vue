@@ -1,5 +1,6 @@
 <script setup>
 import DeleteRecording from './DeleteRecording.vue'
+import RecordingDuration from './RecordingDuration.vue'
 import { messageSource } from './inbox-cards.js'
 import { callStates, callerLabel, ringingLabel, callPushLabel } from './call-history.js'
 const props = defineProps({
@@ -72,7 +73,8 @@ function date(ts) {
         @changed="onRecordingChanged(call, $event)"
       />
       <span class="muted"
-        >{{ (call.voicemail_bytes / 1024).toFixed(1) }} KB（1 KB = 1024 字节）。下载仍是原始
+        >{{ (call.voicemail_bytes / 1024).toFixed(1) }} KB ·
+        <RecordingDuration :request="request" :media="call.voicemail_media_id" />。下载仍是原始
         AMR。若文件缺失，请核对恢复的备份是否包含录音；未包含时需另行恢复 voicemail/。</span
       >
     </div>
