@@ -1,4 +1,5 @@
-FROM node:26.7.0-alpine3.23 AS web
+# Static assets are shared by all targets; run Node/WASM on the native builder.
+FROM --platform=$BUILDPLATFORM node:26.7.0-alpine3.23 AS web
 WORKDIR /src/web
 COPY web/package.json web/package-lock.json ./
 RUN npm ci

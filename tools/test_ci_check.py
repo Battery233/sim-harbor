@@ -30,7 +30,19 @@ class RepositoryChecks(unittest.TestCase):
                 path = root / name
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_bytes((source / name).read_bytes())
-            self.assertRegex(versions(root), r"^\d+\.\d+\.\d+$")
+            node = versions(root)
+            self.assertRegex(node, r"^\d+\.\d+\.\d+$")
+            path = root / "Dockerfile"
+            original = path.read_text()
+            legacy = original.replace("FROM --platform=$BUILDPLATFORM node:", "FROM node:", 1)
+            for docker in (original, legacy):
+                with self.subTest(native_builder="--platform=$BUILDPLATFORM" in docker):
+                    path.write_text(docker)
+                    self.assertEqual(versions(root), node)
+                    path.write_text(docker.replace(f"node:{node}-", "node:alpine-", 1))
+                    with self.assertRaisesRegex(ValueError, "pinned Node version"):
+                        versions(root)
+            path.write_text(original)
             path = root / "compose.yaml"
             original = path.read_text()
             for invalid in ("image: ${SIM_IMAGE:-sim-harbor:0.0.0}", "image: sim-harbor:0.0.0"):

@@ -2,6 +2,8 @@
 
 使用 [go.mod](../go.mod) 声明的 Go 版本和兼容的 Node.js/npm；当前 Docker 构建基线为 Go 1.26.9、Node.js 26.7.0，完整版本见 [Dockerfile](../Dockerfile)。`GOTOOLCHAIN=local` 要求本机已有符合版本要求的 Go。测试和构建命令见 [CONTRIBUTING.md](../CONTRIBUTING.md)。
 
+Docker 前端阶段使用 `BUILDPLATFORM`，在构建主机的原生平台执行依赖安装、完整前端测试和静态构建；生成的网页与 WASM 资源由 amd64、arm64 镜像共用。Go 后端仍按目标平台执行测试和编译。构建平台与目标平台的区别见 [Docker 多平台构建说明](https://docs.docker.com/build/building/multi-platform/#cross-compilation)。
+
 ## 合成数据体验
 
 用内置模拟器即可体验收件与卡片界面。示例使用本机合成设备和独立数据目录，先在项目根目录构建网页并启动服务：

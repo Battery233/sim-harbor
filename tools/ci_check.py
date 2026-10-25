@@ -45,7 +45,10 @@ def versions(root):
     go = re.search(r"^go (\S+)$", (root / "go.mod").read_text(), re.M)[1]
     if re.search(r"^FROM golang:([^ -]+)", docker, re.M)[1] != go:
         raise ValueError("Docker Go version differs from go.mod")
-    return re.search(r"^FROM node:(\d+\.\d+\.\d+)-", docker, re.M)[1]
+    node = re.search(r"^FROM (?:--platform=\$BUILDPLATFORM )?node:(\d+\.\d+\.\d+)-", docker, re.M)
+    if not node:
+        raise ValueError("Docker frontend must use a pinned Node version")
+    return node[1]
 
 
 def anchors(text):
