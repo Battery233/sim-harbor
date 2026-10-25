@@ -22,7 +22,7 @@ import (
 func TestManagedBackupDownloadRestoreAndSeparateAudio(t *testing.T) {
 	for _, destination := range []string{"browser", "server"} {
 		t.Run(destination, func(t *testing.T) {
-			s, _ := fixture(t, 0, func(c *config.Config) {
+			s := httpFixture(t, func(c *config.Config) {
 				c.AdminToken = "SYNTHETIC-BACKUP-RESTORE-TOKEN"
 				// Include a pending reminder to exercise restore protection.
 				c.BarkKey, c.BarkBaseURL, c.PublicURL = "SYNTHETIC-BARK", "https://bark.example.invalid", "https://example.invalid"
@@ -98,6 +98,22 @@ func backupAPI(s *Server, method, path, body, token string) *httptest.ResponseRe
 	w := httptest.NewRecorder()
 	s.Handler().ServeHTTP(w, r)
 	return w
+}
+
+func TestLegacySynchronousBackupEndpointRemoved(t *testing.T) {
+	s := httpFixture(t, func(c *config.Config) { c.AdminToken = "SYNTHETIC-BACKUP-TOKEN-ONLY" })
+	if w := backupAPI(s, "POST", "/backups/download", `{"confirmed":true}`, s.Config.AdminToken); w.Code != http.StatusMethodNotAllowed {
+		t.Fatal("legacy synchronous backup still available", w.Code)
+	}
+	files, err := os.ReadDir(s.Config.DataDir)
+	if err != nil || len(files) == 0 {
+		t.Fatal("application data unavailable", err)
+	}
+	for _, file := range files {
+		if file.Name() == "backups" || strings.HasPrefix(file.Name(), ".sim-backup-") {
+			t.Fatal("removed endpoint created backup files")
+		}
+	}
 }
 func backupList(t *testing.T, s *Server, token string) []backupFile {
 	t.Helper()
@@ -197,7 +213,7 @@ func TestSavedBackupSurvivesCanceledRequestDownloadFailureAndRestart(t *testing.
 	}
 }
 func TestBackupCrashCleanupOnlyRemovesOwnedWorkAndExpiredTemporaryFiles(t *testing.T) {
-	s, _ := fixture(t, 0, func(c *config.Config) { c.AdminToken = strings.Repeat("t", 24) })
+	s := httpFixture(t, func(c *config.Config) { c.AdminToken = strings.Repeat("t", 24) })
 	token := s.Config.AdminToken
 	persistent := generateTestBackup(t, s, token, strings.Repeat("a", 32), "server")
 	temporary := generateTestBackup(t, s, token, strings.Repeat("b", 32), "browser")
@@ -262,7 +278,7 @@ func TestBackupCrashCleanupOnlyRemovesOwnedWorkAndExpiredTemporaryFiles(t *testi
 	}
 }
 func TestBackupConsentCapacityPathAndDeleteProtection(t *testing.T) {
-	s, _ := fixture(t, 0, func(c *config.Config) { c.AdminToken = strings.Repeat("t", 24) })
+	s := httpFixture(t, func(c *config.Config) { c.AdminToken = strings.Repeat("t", 24) })
 	token := s.Config.AdminToken
 	if w := backupAPI(s, "GET", "/backups", "", ""); w.Code != 401 {
 		t.Fatal(w.Code)
@@ -363,7 +379,7 @@ func TestBrowserBackupInterruptedDownloadDoesNotAuthorizeMigration(t *testing.T)
 	}
 }
 func TestBackupRepositoryRejectsSymlinksWithoutFollowingOrCleaningTargets(t *testing.T) {
-	s, _ := fixture(t, 0, func(c *config.Config) { c.AdminToken = strings.Repeat("t", 24) })
+	s := httpFixture(t, func(c *config.Config) { c.AdminToken = strings.Repeat("t", 24) })
 	outside := t.TempDir()
 	marker := filepath.Join(outside, "keep")
 	if err := os.WriteFile(marker, []byte("SYNTHETIC"), 0600); err != nil {
@@ -527,7 +543,7 @@ func TestBackupStatusWriteFailureRetainsExistingArchive(t *testing.T) {
 func TestManagedRecordingBackupBothDestinationsAndRestore(t *testing.T) {
 	for _, destination := range []string{"browser", "server"} {
 		t.Run(destination, func(t *testing.T) {
-			s, _ := fixture(t, 0, func(c *config.Config) { c.AdminToken = "SYNTHETIC-MANAGED-AUDIO-TOKEN" })
+			s := httpFixture(t, func(c *config.Config) { c.AdminToken = "SYNTHETIC-MANAGED-AUDIO-TOKEN" })
 			audio := []byte("#!AMR\nSYNTHETIC-MANAGED-AUDIO")
 			media, _, _, err := s.Store.SaveVoicemail(t.Context(), s.Config.DataDir, audio, 0, "", 0, 1000)
 			if err != nil {

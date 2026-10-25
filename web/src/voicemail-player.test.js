@@ -273,6 +273,35 @@ test('AMR-NB silence frames decode to 8 kHz mono PCM', async () => {
   assert.equal(audio.sampleRate, 8000)
   assert.equal(audio.channelData.length, 1)
   assert.equal(audio.channelData[0].length, frames * 160)
-  const junk = await decodeVoicemail(Uint8Array.of(1, 2, 3, 4, 5, 6, 7, 8, 9))
-  assert.equal(junk.channelData.length, 0)
+  await assert.rejects(decodeVoicemail(Uint8Array.of(1, 2, 3, 4, 5, 6, 7, 8, 9)), /无法解码/)
+})
+
+test('短文件也可能展开成超长音频，解码前拒绝超过十分钟的静音帧', async () => {
+  const audio = silenceAMR(10 * 60 * 50 + 1)
+  assert.ok(audio.byteLength < 32 * 1024)
+  const h = harness(decodeVoicemail)
+  const done = h.player.toggle(call(1))
+  h.waiters[0].resolve(new Blob([audio]))
+  await assert.rejects(done, /超过网页播放的 10 分钟上限.*下载/)
+  assert.equal(h.contexts[0].sources.length, 0)
+  assert.equal(
+    h.events.some((e) => e.phase === 'playing'),
+    false,
+  )
+  assert.deepEqual(h.events.at(-1), { id: 0, phase: 'idle' })
+  // Reject again without decoding after an earlier failed playback.
+  await assert.rejects(decodeVoicemail(audio), { code: 'voicemail_playback_limit' })
+})
+
+test('恰好十分钟的 AMR 仍可解码，不把播放上限当作文件大小上限', async () => {
+  const audio = await decodeVoicemail(silenceAMR(10 * 60 * 50))
+  assert.equal(audio.sampleRate, 8000)
+  assert.equal(audio.channelData[0].length, 10 * 60 * 8000)
+})
+
+test('截断帧、保留类型和只有文件头的录音不会交给解码器', async () => {
+  for (const tail of [[], [0x3c], [0x4c], [0x7c, 0x7c, 0x3c]]) {
+    const bytes = new Uint8Array([...new TextEncoder().encode('#!AMR\n'), ...tail])
+    await assert.rejects(decodeVoicemail(bytes), /无法解码/)
+  }
 })

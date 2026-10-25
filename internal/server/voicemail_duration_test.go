@@ -13,8 +13,8 @@ import (
 	"github.com/Battery233/sim-harbor/internal/store"
 )
 
-// These read-only HTTP handlers need a store, but no device TCP listener.
-func durationFixture(t *testing.T, options ...func(*config.Config)) *Server {
+// HTTP-only tests share a real store without opening a device TCP listener.
+func httpFixture(t *testing.T, options ...func(*config.Config)) *Server {
 	t.Helper()
 	c := config.Config{Environment: "local", HTTPAddr: "127.0.0.1:8080", TCPAddr: "127.0.0.1:9000", DataDir: t.TempDir(), DeviceID: "SIM-TEST", DeviceCIDRs: []string{"127.0.0.1/32"}, AESMode: 1, AESKey: "0123456789abcdef", AESIV: "fedcba9876543210", Timezone: "Asia/Shanghai", StaleSeconds: 345}
 	for _, option := range options {
@@ -23,7 +23,7 @@ func durationFixture(t *testing.T, options ...func(*config.Config)) *Server {
 	if err := c.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	db, err := store.Open(filepath.Join(c.DataDir, "sim.db"), store.OpenOptions{})
+	db, err := store.Open(filepath.Join(c.DataDir, "sim.db"), store.OpenOptions{NotificationsEnabled: c.BarkKey != ""})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,7 +36,7 @@ func durationFixture(t *testing.T, options ...func(*config.Config)) *Server {
 }
 
 func TestVoicemailDurationReadOnlyForLinkedAndUnlinkedAudio(t *testing.T) {
-	s := durationFixture(t)
+	s := httpFixture(t)
 	audio := append([]byte(recording.Header), bytes.Repeat([]byte{0x7c}, 500)...)
 	media, _, _, err := s.Store.SaveVoicemail(t.Context(), s.Config.DataDir, audio, 0, "", 0, 1000)
 	if err != nil {
@@ -94,7 +94,7 @@ func TestVoicemailDurationReadOnlyForLinkedAndUnlinkedAudio(t *testing.T) {
 
 func TestVoicemailDurationUsesManagementAuth(t *testing.T) {
 	const token = "SYNTHETIC-DURATION-ADMIN-TOKEN"
-	s := durationFixture(t, func(c *config.Config) {
+	s := httpFixture(t, func(c *config.Config) {
 		c.AdminToken, c.AdminTokenHeader, c.Environment = token, "X-SIMHarbor-Authorization", "cloud"
 	})
 	media, _, _, err := s.Store.SaveVoicemail(t.Context(), s.Config.DataDir, []byte(recording.Header+"\x7c"), 0, "", 0, 1000)

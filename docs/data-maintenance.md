@@ -2,7 +2,7 @@
 
 从日常归档到本地/云端迁移，SIMHarbor 提供短信导出、一致备份、完整性检查和受控恢复，让数据随自己的部署选择流转。
 
-本文以 v1.1.6 为准，镜像使用方式见[版本维护](releases.md)。本版与 v1.1.2～v1.1.5 同为 schema 21，支持格式 1 和含录音的格式 2 ZIP，升级无需新增迁移或补填配置。v1.1.1 使用 schema 20、格式 1 ZIP，首次升级到当前版会自动迁移；v1.1.1 及更早程序不能直接打开新库，回退需使用兼容的升级前数据库。恢复会清除旧等待截止时间并暂停旧任务，避免补推历史来电。
+本文以 v1.1.7 为准，镜像使用方式见[版本维护](releases.md)。本版与 v1.1.2～v1.1.6 同为 schema 21，支持格式 1 和含录音的格式 2 ZIP，升级无需新增迁移或补填配置。v1.1.1 使用 schema 20、格式 1 ZIP，首次升级到当前版会自动迁移；v1.1.1 及更早程序不能直接打开新库，回退需使用兼容的升级前数据库。恢复会清除旧等待截止时间并暂停旧任务，避免补推历史来电。
 
 ## 选择导出或备份
 
@@ -10,7 +10,7 @@
 | --- | --- | --- |
 | 阅读、表格整理或归档收件短信 | 短信导出：JSON / CSV | 筛选后的收件短信及卡身份、时间、完整性和已读状态 |
 | 升级、恢复或迁移业务数据库 | 数据库备份：ZIP | 收件、发件与结果、来电、卡资料与通知偏好、通知任务、设备状态、恢复确认、留言索引、播放状态及控制短信账本；可勾选包含录音文件 |
-| 同时保留留言录音 | 数据库备份勾选“同时备份通话录音” | 数据库与应用 `voicemail/` 内已关联、未关联的完整 AMR；也可单独私密复制该目录 |
+| 同时保留留言录音 | 数据库备份勾选“同时备份通话录音” | 数据库与应用 `voicemail/` 内已关联、未关联的 AMR 原文件；也可单独私密复制该目录 |
 | 转移访问凭据和部署参数 | 单独私密备份配置 | `.env`、初始化 JSON、私有 Compose 及数据目录内 `system.private.json` |
 
 通话记录与发件箱随 ZIP 完整保存、恢复；JSON/CSV 入口用于收件短信。升级前在网页选择“数据库备份”，生成并下载，或保存到服务器后另行下载。
@@ -31,9 +31,11 @@
 应用通过 SQLite Online Backup API 取得包含业务库与 manifest 的一致快照，日常运行中即可完成备份，并纳入 WAL 中的有效数据。两种保存方式都可勾选“同时备份通话录音”，默认不勾选。
 
 - **未勾选**：ZIP 格式 1，只有数据库与 manifest；包含录音索引，不含 AMR 文件。
-- **已勾选**：ZIP 格式 2，增加 `voicemail/<录音ID>.amr` 和每个文件的大小、SHA-256。包含已关联、未关联及目录内未入库的完整、命名合规 AMR；排除上传临时文件与已登记删除的文件。
+- **已勾选**：ZIP 格式 2，增加 `voicemail/<录音ID>.amr` 和每个文件的大小、SHA-256。包含已关联、未关联及目录内未入库、命名合规的 AMR 原文件；排除上传临时文件与已登记删除的文件。
 
 含录音快照与上传、删除共用文件协调机制，取得数据库快照时固定对应文件；之后删除原录音不影响该快照。索引对应文件缺失、大小或摘要不符、AMR 头损坏、符号链接或读取错误时整次备份失败，不生成一份静默缺文件的备份。未入库文件随目录保存，但恢复不会伪造其通话关联。
+
+备份和恢复校验录音的文件头、大小、SHA-256 及索引对应关系，不逐帧验证音频内容，也不保证每段录音一定能解码播放。音频帧本身截断但文件头和摘要符合要求时，仍会按原样保存；网页播放与时长读取会另行检查音频帧，不会自动修改原文件。
 
 ### 文件位置与命名
 
@@ -67,7 +69,7 @@ ZIP 内含 `sim.db` 与 `manifest.json`；manifest 记录数据库摘要、版�
 | v1.0.4 | 17 | 格式 1，增加分片上报关联 |
 | v1.1.0 | 19 | 格式 1，包含录音索引，不含 AMR |
 | v1.1.1 | 20 | 格式 1，包含录音等待与通知阶段，不含 AMR |
-| v1.1.2～v1.1.6 | 21 | 默认格式 1；勾选录音为格式 2，同时还原 AMR |
+| v1.1.2～v1.1.7 | 21 | 默认格式 1；勾选录音为格式 2，同时还原 AMR |
 
 格式 1 只有录音索引，单独保存的 `voicemail/` 需放回新数据目录；没有文件时页面会提示缺失。格式 2 同时还原数据库、录音和播放状态，但不会为目录内未入库文件伪造关联。恢复还原的是备份时点：备份之后才删除的录音可能随旧快照恢复，不代表删除操作失败。
 
@@ -116,7 +118,7 @@ GOTOOLCHAIN=local go run ./cmd/maintain backup \
 docker run --rm --network none --read-only \
   --tmpfs /data:rw,uid=65532,gid=65532,mode=0700,size=2048m \
   --mount type=bind,src=/srv/sim-backups,dst=/backup,readonly \
-  --entrypoint /app/sim-data sim-harbor:1.1.6 \
+  --entrypoint /app/sim-data sim-harbor:1.1.7 \
   inspect -backup /backup/sim-backup.zip
 ```
 
@@ -126,7 +128,7 @@ docker run --rm --network none --read-only \
 docker run --rm --network none --read-only \
   --mount type=bind,src=/srv/sim-maintain-tmp,dst=/data \
   --mount type=bind,src=/srv/sim-backups,dst=/backup,readonly \
-  --entrypoint /app/sim-data sim-harbor:1.1.6 \
+  --entrypoint /app/sim-data sim-harbor:1.1.7 \
   inspect -backup /backup/sim-backup.zip
 ```
 
@@ -144,7 +146,7 @@ docker volume inspect sim_sim-data --format '{{.Name}}'
 docker run --rm --network none --read-only \
   --mount type=bind,src=/srv/sim-backups,dst=/backup,readonly \
   --mount type=volume,src=sim_sim-data,dst=/data \
-  --entrypoint /app/sim-data sim-harbor:1.1.6 \
+  --entrypoint /app/sim-data sim-harbor:1.1.7 \
   restore -backup /backup/sim-backup.zip \
   -to /data/restored-instance \
   -confirm-archive REPLACE_WITH_ARCHIVE_SHA256
@@ -154,7 +156,7 @@ docker run --rm --network none --read-only \
 
 ### 停服备份
 
-网页暂时不可用或正式迁移需要最终快照时，可以用源实例对应版本的镜像执行停服备份。下面以 `sim-harbor:1.1.6`、数据目录 `/data` 为例；如果实际目录为 `/data/storage`，调整 `-data-directory`。宿主 `/srv/sim-backups` 需允许容器 UID 65532 写入，输出文件使用尚不存在的新名称。
+网页暂时不可用或正式迁移需要最终快照时，可以用源实例对应版本的镜像执行停服备份。下面以 `sim-harbor:1.1.7`、数据目录 `/data` 为例；如果实际目录为 `/data/storage`，调整 `-data-directory`。宿主 `/srv/sim-backups` 需允许容器 UID 65532 写入，输出文件使用尚不存在的新名称。
 
 先沿用原项目名及完整 Compose 文件停止应用；这里展示基础安装参数：
 
@@ -169,7 +171,7 @@ docker compose --env-file .env -p sim \
 docker run --rm --network none --read-only \
   --mount type=volume,src=sim_sim-data,dst=/data \
   --mount type=bind,src=/srv/sim-backups,dst=/backup \
-  --entrypoint /app/sim-data sim-harbor:1.1.6 \
+  --entrypoint /app/sim-data sim-harbor:1.1.7 \
   backup -data-directory /data -output /backup/sim-backup-final.zip
 ```
 

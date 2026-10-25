@@ -145,25 +145,22 @@ test('export filters encode exact sender and exclusive date boundary', () => {
   assert.throws(() => messageExportQuery({ slot: '3' }))
 })
 
-test('failed backup download makes one confirmed POST and disposed flow cannot start another', async () => {
+test('failed saved-backup download makes one GET and disposed flow cannot start another', async () => {
   let calls = 0
   const request = createFileRequest({
     getCredential: () => 'test',
     onUnauthorized: () => {},
     fetcher: async (path, options) => {
       calls++
-      assert.equal(options.method, 'POST')
-      assert.deepEqual(JSON.parse(options.body), { confirmed: true })
+      assert.equal(options.method, 'GET')
+      assert.equal(options.body, undefined)
       return new Response('{}', { status: 503 })
     },
   })
   const flow = createDownloadFlow({ request, save: () => assert.fail('failed file saved') })
-  await assert.rejects(flow.run('/backups/download', 'backup.zip', 'POST', { confirmed: true }))
+  await assert.rejects(flow.run('/backups/' + 'a'.repeat(32) + '/download', 'backup.zip'))
   flow.dispose()
-  assert.equal(
-    await flow.run('/backups/download', 'backup.zip', 'POST', { confirmed: true }),
-    false,
-  )
+  assert.equal(await flow.run('/backups/' + 'a'.repeat(32) + '/download', 'backup.zip'), false)
   assert.equal(calls, 1)
 })
 

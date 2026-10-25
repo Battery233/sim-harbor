@@ -73,3 +73,49 @@ test('切换录音和离开后的迟到结果不会覆盖当前时长', async ()
   await pending
   assert.equal(labels.length, count)
 })
+
+test('只有手动刷新会重试读取失败的时长，成功后复用且不重叠请求', async () => {
+  let calls = 0,
+    finish
+  const labels = []
+  const duration = createRecordingDuration({
+    request: async () => {
+      calls++
+      if (calls === 1) throw new Error('synthetic offline')
+      return new Promise((resolve) => (finish = resolve))
+    },
+    changed: (label) => labels.push(label),
+  })
+  const media = 'a'.repeat(32)
+  await duration.load(media)
+  await duration.load(media)
+  assert.equal(calls, 1)
+  const retried = duration.load(media, true)
+  await duration.load(media, true)
+  assert.equal(calls, 2)
+  finish({ duration_ms: 10000 })
+  await retried
+  assert.equal(labels.at(-1), '总时长 10 秒')
+  await duration.load(media, true)
+  assert.equal(calls, 2)
+})
+
+test('文件本身时长未知不重复读取，迟到失败也不会使新录音重试', async () => {
+  let calls = 0,
+    rejectOld
+  const duration = createRecordingDuration({
+    request: () => {
+      calls++
+      return calls === 1
+        ? new Promise((_, reject) => (rejectOld = reject))
+        : Promise.resolve({ duration_ms: null })
+    },
+    changed: () => {},
+  })
+  const old = duration.load('a'.repeat(32))
+  await duration.load('b'.repeat(32))
+  rejectOld(new Error('synthetic stale failure'))
+  await old
+  await duration.load('b'.repeat(32), true)
+  assert.equal(calls, 2)
+})

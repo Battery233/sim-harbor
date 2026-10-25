@@ -40,7 +40,7 @@ func TestDeleteVoicemailPreservesCallDedupAndSentNotification(t *testing.T) {
 		t.Fatal("deleted upload resurrected", duplicate, err)
 	}
 	groups, err := s.CallGroups(ctx, "", "", 0, now+10)
-	if err != nil || len(groups) != 1 || len(groups[0].VoicemailMediaIDs) != 0 || !groups[0].Latest.VoicemailDeleted {
+	if err != nil || len(groups) != 1 || groups[0].RecordingCount != 0 || !groups[0].Latest.VoicemailDeleted {
 		t.Fatal("deleted audio in summary", groups, err)
 	}
 	if err = s.DeleteVoicemail(ctx, dir, media); err != nil {

@@ -81,7 +81,8 @@ export function createVoicemailPlayer({
       let audio
       try {
         audio = await decode(bytes)
-      } catch {
+      } catch (error) {
+        if (error?.code === 'voicemail_playback_limit') throw error
         throw new Error('这段留言无法解码。')
       }
       if (stale(gen)) return

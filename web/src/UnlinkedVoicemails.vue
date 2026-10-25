@@ -15,6 +15,7 @@ const view = ref({ items: [], next: 0 }),
   loaded = ref(false),
   error = ref(''),
   playback = ref({ id: 0, phase: 'idle' })
+const durationRefresh = ref(0)
 let stopped = false
 const playingMedia = new Map()
 const markingPlayed = new Set()
@@ -62,7 +63,10 @@ async function load(more = false) {
   error.value = ''
   if (!more) player.stop()
   try {
-    if (await flow.load(more)) loaded.value = true
+    if (await flow.load(more)) {
+      loaded.value = true
+      if (!more) durationRefresh.value++
+    }
   } catch (e) {
     if (!stopped) error.value = e.message
   } finally {
@@ -156,6 +160,7 @@ onUnmounted(() => {
                 v-if="item.file_state === 'available'"
                 :request="request"
                 :media="item.file_name?.replace(/\.amr$/, '')"
+                :refresh-key="durationRefresh"
               />
               <span v-else>总时长未知</span>
             </dd>

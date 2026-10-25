@@ -437,7 +437,6 @@ func (s *Server) Handler() http.Handler {
 	s.settingsRoutes(mux)
 	mux.HandleFunc("POST /api/messages/{id}/delete", s.deleteMessage)
 	mux.HandleFunc("GET /api/messages/export", s.exportMessages)
-	mux.HandleFunc("POST /api/backups/download", s.downloadBackup)
 	s.backupRoutes(mux)
 	s.migrationRoutes(mux)
 	mux.HandleFunc("GET /api/messages", func(w http.ResponseWriter, r *http.Request) {

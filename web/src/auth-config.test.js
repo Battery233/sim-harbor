@@ -90,7 +90,7 @@ test('bad or unavailable discovery blocks writes and downloads without a default
       getAuthHeaders: (value) => auth.get(value),
       onUnauthorized: () => {},
       fetcher: () => assert.fail('download sent without discovery'),
-    })('/backups/download', 'POST', { confirmed: true }),
+    })('/backups/' + 'a'.repeat(32) + '/download'),
   )
 })
 

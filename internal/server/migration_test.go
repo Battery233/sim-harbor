@@ -1,9 +1,9 @@
 package server
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/Battery233/sim-harbor/internal/config"
 	"github.com/Battery233/sim-harbor/internal/store"
 	"net/http"
@@ -31,17 +31,22 @@ func migrationCall(s *Server, path, body, token, origin string) *httptest.Respon
 func restoredServer(t *testing.T) (*Server, string) {
 	t.Helper()
 	token := strings.Repeat("t", 24)
-	s, _ := fixture(t, 0, func(c *config.Config) { c.AdminToken = token; c.OutboundEnabled = true })
+	s := httpFixture(t, func(c *config.Config) { c.AdminToken = token; c.OutboundEnabled = true })
 	if err := s.Store.HoldRestoredData(t.Context(), strings.Repeat("a", 64), time.Now().Unix()); err != nil {
 		t.Fatal(err)
 	}
 	return s, token
 }
-func prepareMigration(t *testing.T, s *Server, token string) string {
+func downloadMigrationBackup(t *testing.T, s *Server, token string) {
 	t.Helper()
-	if w := migrationCall(s, "/backups/download", `{"confirmed":true}`, token, ""); w.Code != 200 {
+	f := generateTestBackup(t, s, token, fmt.Sprintf("%032x", len(backupList(t, s, token))+1), "browser")
+	if w := backupAPI(s, "GET", "/backups/"+f.ID+"/download", "", token); w.Code != 200 {
 		t.Fatal(w.Code, w.Body)
 	}
+}
+func prepareMigration(t *testing.T, s *Server, token string) string {
+	t.Helper()
+	downloadMigrationBackup(t, s, token)
 	w := migrationCall(s, "/migration/preview", "{"+migrationAcknowledgements+"}", token, "")
 	if w.Code != 200 {
 		t.Fatal(w.Code, w.Body)
@@ -112,7 +117,7 @@ func TestMigrationRejectsStaleHistoryExpiredPreviewNewBackupAndRestart(t *testin
 					t.Fatal(err)
 				}
 			case "new_backup":
-				migrationCall(s, "/backups/download", `{"confirmed":true}`, token, "")
+				downloadMigrationBackup(t, s, token)
 			case "restart":
 				s = New(s.Config, s.Store)
 			}
@@ -175,8 +180,8 @@ func (w *brokenBackupWriter) Write([]byte) (int, error) {
 }
 func TestFailedBackupAndExpiredEvidenceDoNotPermitMigration(t *testing.T) {
 	s, token := restoredServer(t)
-	r := httptest.NewRequest("POST", "http://example.com/api/backups/download", bytes.NewBufferString(`{"confirmed":true}`))
-	r.Header.Set("Content-Type", "application/json")
+	f := generateTestBackup(t, s, token, strings.Repeat("f", 32), "browser")
+	r := httptest.NewRequest("GET", "http://example.com/api/backups/"+f.ID+"/download", nil)
 	r.Header.Set("Authorization", "Bearer "+token)
 	s.Handler().ServeHTTP(&brokenBackupWriter{header: http.Header{}}, r)
 	if s.migrationBackup != nil {

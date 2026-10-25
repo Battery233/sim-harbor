@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"testing"
@@ -120,11 +121,58 @@ func TestCallGroupIncludesRecordingFromOlderCall(t *testing.T) {
 		t.Fatal(err)
 	}
 	groups, err := s.CallGroups(ctx, "", "", 0, start+40)
-	if err != nil || len(groups) != 1 || groups[0].Count != 3 || groups[0].Latest.VoicemailID != 0 || len(groups[0].VoicemailMediaIDs) != 1 || groups[0].VoicemailMediaIDs[0] != media {
+	if err != nil || len(groups) != 1 || groups[0].Count != 3 || groups[0].Latest.VoicemailID != 0 || groups[0].RecordingCount != 1 || groups[0].UnplayedRecordings != 1 {
 		t.Fatal("older recording missing from summary", groups, err)
 	}
 	calls, err := s.CallsInGroup(ctx, groups[0].ID, 0, start+40)
 	if err != nil || calls[2].VoicemailMediaID != media {
 		t.Fatal("recording identity missing", err)
+	}
+	if _, err := s.MarkVoicemailPlayed(ctx, media, start+41); err != nil {
+		t.Fatal(err)
+	}
+	g, err := s.CallGroup(ctx, groups[0].ID, start+42)
+	if err != nil || g.RecordingCount != 1 || g.UnplayedRecordings != 0 {
+		t.Fatal("played recording changed total", g, err)
+	}
+	if err := s.DeleteVoicemail(ctx, dir, media); err != nil {
+		t.Fatal(err)
+	}
+	g, err = s.CallGroup(ctx, groups[0].ID, start+44)
+	if err != nil || g.Count != 3 || g.RecordingCount != 0 || g.UnplayedRecordings != 0 {
+		t.Fatal("deleted recording retained in group count", g, err)
+	}
+}
+
+func TestCallGroupRecordingSummaryStaysSmallWithLongHistory(t *testing.T) {
+	s := open(t, filepath.Join(t.TempDir(), "sim.db"))
+	ctx := t.Context()
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	if _, err = tx.Exec(`INSERT INTO cards(id,iccid,name,group_name) VALUES('aaaaaaaaaaaaaaaa','SYNTHETIC-CARD','Synthetic','Synthetic')`); err != nil {
+		t.Fatal(err)
+	}
+	for i := 1; i <= 1000; i++ {
+		if _, err = tx.Exec(`INSERT INTO calls(id,key,device_id,card_id,slot,phone,start_ts,state,received_at) VALUES(?,?,?,'aaaaaaaaaaaaaaaa',1,'SYNTHETIC-CALLER',1,'answered',1)`, i, fmt.Sprint(i), "SIM-TEST"); err != nil {
+			t.Fatal(err)
+		}
+		media := fmt.Sprintf("%032x", i)
+		if _, err = tx.Exec(`INSERT INTO voicemails(media_id,call_id,sha256,size,stored_name,created_at) VALUES(?,?,?,7,?,1)`, media, i, fmt.Sprintf("%064x", i), media+".amr"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err = tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	groups, err := s.CallGroups(ctx, "", "", 0, 2)
+	if err != nil || len(groups) != 1 || groups[0].Count != 1000 || groups[0].RecordingCount != 1000 || groups[0].UnplayedRecordings != 1000 {
+		t.Fatal("recording summary lost history", err)
+	}
+	data, err := json.Marshal(groups)
+	if err != nil || len(data) > 2048 {
+		t.Fatal("group payload grew with recording IDs", len(data), err)
 	}
 }

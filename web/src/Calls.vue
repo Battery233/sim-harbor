@@ -34,6 +34,7 @@ const rows = ref([]),
   linkedGroup = ref(null),
   expanded = ref({}),
   playback = ref({ id: 0, phase: 'idle' })
+const durationRefresh = ref(0)
 const options = computed(() => cardFilterOptions(props.state, props.now))
 const visible = computed(() =>
   linkedGroup.value && !rows.value.some((g) => g.id === linkedGroup.value.id)
@@ -148,6 +149,10 @@ async function refresh(more = false) {
     loading = false
   }
 }
+async function refreshRecordings() {
+  await refresh()
+  durationRefresh.value++
+}
 function clearDetails() {
   for (const d of details.values()) d.dispose()
   details.clear()
@@ -242,7 +247,7 @@ onUnmounted(() => {
           >
         </h2>
       </div>
-      <button @click="refresh()">刷新记录</button>
+      <button @click="refreshRecordings">刷新记录</button>
     </div>
 
     <div v-if="error" class="notice error" role="alert">{{ error }}</div>
@@ -281,11 +286,9 @@ onUnmounted(() => {
             </h3>
             <span class="call-badges">
               <span
-                v-if="recordingBadge(group.voicemail_media_ids?.length, group.unplayed_recordings)"
+                v-if="recordingBadge(group.recording_count, group.unplayed_recordings)"
                 class="badge recording-badge"
-                >{{
-                  recordingBadge(group.voicemail_media_ids?.length, group.unplayed_recordings)
-                }}</span
+                >{{ recordingBadge(group.recording_count, group.unplayed_recordings) }}</span
               >
               <span class="badge" :class="{ 'missed-call': group.latest.state === 'missed' }">{{
                 callStates[group.latest.state]
@@ -324,6 +327,7 @@ onUnmounted(() => {
             :on-play="playVoicemail"
             :request="request"
             :on-recording-changed="recordingChanged"
+            :duration-refresh="durationRefresh"
             :playback="playback"
             :recording-label="
               recordingBadge(call.voicemail_id ? 1 : 0, call.voicemail_played_at ? 0 : 1)

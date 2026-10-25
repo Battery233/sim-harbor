@@ -25,7 +25,7 @@ func TestAuthDiscoveryOnlyExposesActiveHeaderAndKeepsOtherRoutesProtected(t *tes
 	if containsPrivate(w.Body.String(), s.Config.AdminToken, s.Config.AESKey, s.Config.AESIV) || w.Header().Get("Cache-Control") != "no-store" {
 		t.Fatal("discovery exposed credentials or was cacheable")
 	}
-	for _, path := range []string{"/api/settings", "/api/state", "/api/health", "/api/auth/", "/api/messages/export", "/api/backups/download"} {
+	for _, path := range []string{"/api/settings", "/api/state", "/api/health", "/api/auth/", "/api/messages/export", "/api/backups"} {
 		if w := request(s, http.MethodGet, "http://example.com"+path, "", ""); w.Code != 401 {
 			t.Fatal("discovery exemption escaped its route", path, w.Code)
 		}
