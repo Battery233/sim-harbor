@@ -1058,6 +1058,16 @@ button.danger {
   padding: 4px 10px;
   font-size: 12px;
 }
+.voicemail-actions .recording-mark-played,
+.outgoing-actions .recording-mark-played {
+  border: 0;
+  background: transparent;
+  padding: 2px 4px;
+  font-size: 11px;
+  color: #6b7667;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
 .call-row .detail-head {
   gap: 12px;
   flex-wrap: wrap;

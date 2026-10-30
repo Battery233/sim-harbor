@@ -280,6 +280,16 @@ onUnmounted(() => {
       <fieldset :disabled="busy || restarting || locked">
         <div v-for="group in recording ? [] : groups" :key="group.title" class="settings-group">
           <h3>{{ group.title }}</h3>
+          <template v-if="group.title === '管理访问'">
+            <label class="consent"
+              ><input v-model="values.skip_admin_token" type="checkbox" />跳过面板访问凭据</label
+            >
+            <p class="tiny muted">
+              默认关闭。仅在 Cloudflare Access 等已保护整个管理入口（含 API
+              和下载）、源站无法被绕过时开启。 录音上传域名仍须只开放上传路径。开启后不再校验面板
+              Token，原凭据保留；保存并重启应用后生效，随后刷新网页。
+            </p>
+          </template>
           <div class="settings-grid">
             <label v-for="field in group.fields" :key="field[0]"
               >{{ field[1]

@@ -30,7 +30,7 @@
 
 创建 Self-hosted Access 应用，使用管理域名覆盖全站和 API，Allow 策略仅允许自己的身份，见[官方 Access 应用说明](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/self-hosted-public-app/)。为该 Tunnel 路由启用 Protect with Access，并核对 Team 与 Application AUD；使用本地管理的配置可参考 [cloudflared 示例](../deploy/cloudflared.example.yml)，同时按所选宿主端口调整回源。
 
-Access 与应用管理员 Token 共同保护入口。保持宿主 HTTP 回环监听，并验证登录身份、API 和回源规则，确保访问统一经过保护。[回源校验参数](https://developers.cloudflare.com/tunnel/reference/origin-parameters/#access)。
+默认由 Access 与应用管理员 Token 共同保护入口。保持宿主 HTTP 回环监听，并验证登录身份、API 和回源规则，确保访问统一经过保护。[回源校验参数](https://developers.cloudflare.com/tunnel/reference/origin-parameters/#access)。外层认证完整覆盖全站、API 和下载时，可在系统配置显式[跳过面板凭据](configuration.md#跳过面板凭据)，保存并重启后直接进入管理台；独立录音上传域名仍只转发上传路径，不能暴露管理接口。
 
 ## 4. 验证
 
@@ -58,4 +58,4 @@ Tunnel 中的 Private CIDR 为 Cloudflare 客户端提供指定 IP/网段的私�
 3. 在“录音配置”选择公网模式，填写完整上传地址。应用校验路径中的令牌与实际 HTTP 对端代理 IP；HTTP 回源不改变外部 HTTPS 地址，也不需要在应用填写 Cloudflare 公网 IP。宿主连接器回源到 Docker 发布端口时，应用可能看到网桥网关 IP，应填该单 IP `/32`，不能填写端口或整个子网。网桥变化后需重新核对；不要因此放行所有私网地址。
 4. 根路径 404 可用于确认兜底规则，但不能证明录音已经接收。错误令牌、来源拒绝、容量满等响应要结合应用错误类别定位；最终以录音保存、唯一关联和可读取为准。不要把真实上传令牌或完整地址贴到公开日志。
 
-Tunnel 的路径路由不等于上传鉴权；SIMHarbor 只对录音 POST 提供上传入口，管理 API、播放和下载仍要求管理凭据。两种模式的来源检查、限流与容量规则见[公网录音接收](voicemail.md#公网录音接收)。
+Tunnel 的路径路由不等于上传鉴权；SIMHarbor 只对录音 POST 提供上传入口，管理 API、播放和下载由管理入口认证保护。默认还需应用 Token；显式跳过时由外层认证保护。两种模式的来源检查、限流与容量规则见[公网录音接收](voicemail.md#公网录音接收)。

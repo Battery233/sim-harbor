@@ -1,4 +1,4 @@
-// Playback markers are persisted by the server after audio actually starts.
+// Persist after audio starts, or after the user explicitly marks a failed play.
 export function recordingBadge(total, unplayed) {
   if (!Number.isInteger(total) || total <= 0) return ''
   return unplayed > 0 ? '📼 未播放' : '📼 已播放'

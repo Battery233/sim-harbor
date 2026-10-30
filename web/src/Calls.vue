@@ -1,7 +1,7 @@
 <script setup>
 import { startVisiblePolling } from './visible-polling.js'
 import InfoTip from './InfoTip.vue'
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { cardFilterOptions, messageSource } from './inbox-cards.js'
 import {
   createCallHistory,
@@ -46,18 +46,26 @@ let stopped = false,
   timer,
   linkRevision = 0
 const recordingByCall = new Map()
-const markingPlayed = new Set()
-async function confirmPlayed(call) {
+const markingPlayed = reactive(new Set())
+const failedRecordings = reactive(new Set())
+async function confirmPlayed(call, manual = false) {
   if (!call?.voicemail_media_id || call.voicemail_played_at || markingPlayed.has(call.id)) return
   markingPlayed.add(call.id)
   try {
     call.voicemail_played_at = await markRecordingPlayed(request, call.voicemail_media_id)
+    failedRecordings.delete(call.id)
     if (!stopped) await refresh()
   } catch (e) {
-    if (!stopped) error.value = '录音已开始播放，但播放标记保存失败：' + e.message
+    if (!stopped)
+      error.value =
+        (manual ? '播放标记保存失败：' : '录音已开始播放，但播放标记保存失败：') + e.message
   } finally {
     markingPlayed.delete(call.id)
   }
+}
+function markPlayed(call) {
+  error.value = ''
+  return confirmPlayed(call, true)
 }
 const details = new Map()
 const request = (...args) => props.request(...args)
@@ -157,6 +165,7 @@ function clearDetails() {
   for (const d of details.values()) d.dispose()
   details.clear()
   expanded.value = {}
+  failedRecordings.clear()
 }
 async function playVoicemail(call) {
   error.value = ''
@@ -164,7 +173,10 @@ async function playVoicemail(call) {
     recordingByCall.set(call.id, call)
     await player.toggle(call)
   } catch (e) {
-    if (!stopped) error.value = e.message
+    if (!stopped) {
+      failedRecordings.add(call.id)
+      error.value = e.message
+    }
   }
 }
 async function recordingChanged(call, problem) {
@@ -242,7 +254,7 @@ onUnmounted(() => {
           <InfoTip label="来电记录说明"
             >同一卡、同一号码合并展示，展开查看每次来电。默认只记录，不会接听、拒接或拨号；完整未接结束后提醒一次；只有开始时，5分钟后兜底提醒。留言需在录音配置单独开启。录音可使用局域网直连或经
             HTTPS 公网入口上传；已保存的 AMR 可在网页内播放，也可下载。<br />次数包含这张卡的全部已保存来电，逐次记录保留当时卡名和卡槽。匿名或身份未确认的来电单独展示。📼
-            标记同组任一次来电有录音；成功开始播放后记为已播放，保存在服务器并跨浏览器同步；下载不改变标记。等待时长以板子上报为准，录音总时长按音频文件计算；Bark
+            标记同组任一次来电有录音；成功开始播放后记为已播放，保存在服务器并跨浏览器同步；播放失败时可用小型文字入口手动标记，下载不自动改变标记。等待时长以板子上报为准，录音总时长按音频文件计算；Bark
             已接受不等于 iPhone 已读。</InfoTip
           >
         </h2>
@@ -325,6 +337,9 @@ onUnmounted(() => {
             :highlighted="linked?.id === call.id"
             :on-download="downloadVoicemail"
             :on-play="playVoicemail"
+            :on-mark-played="markPlayed"
+            :playback-failed="failedRecordings.has(call.id)"
+            :marking-played="markingPlayed.has(call.id)"
             :request="request"
             :on-recording-changed="recordingChanged"
             :duration-refresh="durationRefresh"

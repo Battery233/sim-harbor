@@ -354,7 +354,10 @@ func (s *Server) write(sess *session, value any) error {
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/auth", func(w http.ResponseWriter, r *http.Request) {
-		reply(w, http.StatusOK, map[string]string{"admin_token_header": s.Config.AdminTokenHeaderName()})
+		reply(w, http.StatusOK, map[string]any{
+			"admin_token_header": s.Config.AdminTokenHeaderName(),
+			"skip_admin_token":   s.Config.SkipAdminToken,
+		})
 	})
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, r *http.Request) {
 		if s.Store.DB.PingContext(r.Context()) != nil {
@@ -532,7 +535,7 @@ func (s *Server) Handler() http.Handler {
 		w.Header().Set("Referrer-Policy", "no-referrer")
 		// wasm-unsafe-eval compiles the in-page AMR decoder. It does not allow eval.
 		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
-		if s.Config.AdminToken == "" && !localHost(r.Host) {
+		if !s.Config.SkipAdminToken && s.Config.AdminToken == "" && !localHost(r.Host) {
 			reply(w, 403, map[string]string{"error": "host_rejected"})
 			return
 		}
@@ -551,8 +554,14 @@ func (s *Server) Handler() http.Handler {
 			localHealth := r.Method == "GET" && r.URL.Path == "/api/health" && loopbackPeer(r.RemoteAddr)
 			publicAuth := r.Method == http.MethodGet && r.URL.Path == "/api/auth"
 			auth := r.Header.Values(s.Config.AdminTokenHeaderName())
-			if !localHealth && !publicAuth && s.Config.AdminToken != "" && (len(auth) != 1 || !strings.HasPrefix(auth[0], "Bearer ") || subtle.ConstantTimeCompare([]byte(strings.TrimPrefix(auth[0], "Bearer ")), []byte(s.Config.AdminToken)) != 1) {
+			if !s.Config.SkipAdminToken && !localHealth && !publicAuth && s.Config.AdminToken != "" && (len(auth) != 1 || !strings.HasPrefix(auth[0], "Bearer ") || subtle.ConstantTimeCompare([]byte(strings.TrimPrefix(auth[0], "Bearer ")), []byte(s.Config.AdminToken)) != 1) {
 				reply(w, 401, map[string]string{"error": "access_required"})
+				return
+			}
+			// External authentication replaces only the panel token. Browsers must
+			// still use the same origin for management reads and writes.
+			if s.Config.SkipAdminToken && r.Header.Get("Sec-Fetch-Site") == "cross-site" {
+				reply(w, 403, map[string]string{"error": "origin_rejected"})
 				return
 			}
 			if origin := r.Header.Get("Origin"); origin != "" {

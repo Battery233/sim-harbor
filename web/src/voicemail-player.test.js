@@ -299,9 +299,41 @@ test('恰好十分钟的 AMR 仍可解码，不把播放上限当作文件大小
   assert.equal(audio.channelData[0].length, 10 * 60 * 8000)
 })
 
-test('截断帧、保留类型和只有文件头的录音不会交给解码器', async () => {
-  for (const tail of [[], [0x3c], [0x4c], [0x7c, 0x7c, 0x3c]]) {
+test('只有文件头、无完整帧或全部为保留类型时仍然拒绝播放', async () => {
+  for (const tail of [[], [0x3c], [0x4c], [0x6c, 0x6c, 0x6c]]) {
     const bytes = new Uint8Array([...new TextEncoder().encode('#!AMR\n'), ...tail])
     await assert.rejects(decodeVoicemail(bytes), /无法解码/)
   }
+})
+
+test('尾帧截断只播放完整前缀并提示异常，不改写下载字节', async () => {
+  const bytes = new Uint8Array([...silenceAMR(50), 0x3c, 0])
+  const original = bytes.slice()
+  const audio = await decodeVoicemail(bytes)
+  assert.equal(audio.channelData[0].length, 8000)
+  assert.match(audio.warning, /容错播放.*原始 AMR/)
+  assert.deepEqual(bytes, original)
+})
+
+test('局部异常类型按底层解码器边界计数，有限容错并透传播放提示', async () => {
+  const bytes = new Uint8Array([...silenceAMR(50), 0x6c, ...silenceAMR(50).subarray(6)])
+  const audio = await decodeVoicemail(bytes)
+  assert.ok(audio.channelData[0].length >= 100 * 160)
+  assert.ok(audio.channelData[0].length <= 101 * 160)
+  assert.match(audio.warning, /录音数据有异常/)
+  const h = harness(decodeVoicemail)
+  const done = h.player.toggle(call(1))
+  h.waiters[0].resolve(new Blob([bytes]))
+  await done
+  assert.equal(h.contexts[0].sources[0].started, true)
+  assert.equal(h.events.at(-1).phase, 'playing')
+  assert.match(h.events.at(-1).warning, /容错播放/)
+})
+
+test('容错路径仍受完整帧总数和两 MiB 输入限制，不只统计正常帧', async () => {
+  const bytes = new Uint8Array([...silenceAMR(10 * 60 * 50), 0x6c])
+  await assert.rejects(decodeVoicemail(bytes), { code: 'voicemail_playback_limit' })
+  const oversized = new Uint8Array(2 * 1024 * 1024 + 1)
+  oversized.set(silenceAMR(3))
+  await assert.rejects(decodeVoicemail(oversized), /无法解码/)
 })

@@ -13,8 +13,8 @@ export function createVoicemailPlayer({
   function stale(gen) {
     return disposed || gen !== generation
   }
-  function publish(id, phase) {
-    onChange?.({ id, phase })
+  function publish(id, phase, warning) {
+    onChange?.({ id, phase, ...(warning ? { warning } : {}) })
   }
   function silence(source) {
     if (!source) return
@@ -102,7 +102,7 @@ export function createVoicemailPlayer({
         return
       }
       current = { id: call.id, phase: 'playing', source }
-      publish(call.id, 'playing')
+      publish(call.id, 'playing', audio.warning)
     } catch (error) {
       silence(source)
       if (stale(gen)) return

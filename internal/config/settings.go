@@ -158,7 +158,7 @@ func (s *Settings) Save(values Config, secrets SecretChanges, expected string) (
 			return SettingsSnapshot{}, ErrSettingsInvalid
 		}
 	}
-	if len(values.AdminToken) < 24 || values.Validate() != nil {
+	if ((!values.SkipAdminToken || values.AdminToken != "") && len(values.AdminToken) < 24) || values.Validate() != nil {
 		return SettingsSnapshot{}, ErrSettingsInvalid
 	}
 	if err = writeSettings(s.path, unified(values), expected); err != nil {

@@ -64,6 +64,8 @@ test('bad or unavailable discovery blocks writes and downloads without a default
     json({ admin_token_header: '' }),
     json({ admin_token_header: 'X-Token\r\nInjected: value' }),
     json({ admin_token_header: 'X-Token', credentials: 'unexpected' }),
+    json({ admin_token_header: 'Authorization', skip_admin_token: 'true' }),
+    json({ admin_token_header: 'Authorization', skip_admin_token: null }),
   ]) {
     const auth = createAuthHeaders({ fetcher: async () => response })
     let requests = 0
@@ -92,6 +94,38 @@ test('bad or unavailable discovery blocks writes and downloads without a default
       fetcher: () => assert.fail('download sent without discovery'),
     })('/backups/' + 'a'.repeat(32) + '/download'),
   )
+})
+
+test('显式跳过凭据时 API 与下载不发送旧 Token，关闭后恢复原鉴权', async () => {
+  let skip = true
+  const policies = []
+  const auth = createAuthHeaders({
+    fetcher: async () => json({ admin_token_header: 'X-Management-Auth', skip_admin_token: skip }),
+    onConfig: (config) => policies.push(config.skip_admin_token),
+  })
+  let requests = 0
+  const options = {
+    getCredential: () => 'SYNTHETIC-CACHED-TOKEN',
+    getAuthHeaders: (value) => auth.get(value),
+    onUnauthorized: () => assert.fail('unexpected login prompt'),
+    fetcher: async (path, options) => {
+      requests++
+      assert.deepEqual(options.headers, {})
+      return path.endsWith('/export') ? file() : json({ online: false })
+    },
+  }
+  await Promise.all([
+    createRequest(options)('/state'),
+    createFileRequest(options)('/messages/export'),
+  ])
+  assert.equal(requests, 2)
+  assert.deepEqual(policies, [true])
+  skip = false
+  auth.reset()
+  assert.deepEqual(await auth.get('SYNTHETIC-CACHED-TOKEN'), {
+    'X-Management-Auth': 'Bearer SYNTHETIC-CACHED-TOKEN',
+  })
+  assert.deepEqual(policies, [true, false])
 })
 
 test('unauthorized write is not replayed; the next request can discover a changed header', async () => {

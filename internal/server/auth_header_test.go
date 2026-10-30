@@ -11,15 +11,15 @@ import (
 )
 
 func TestAuthDiscoveryOnlyExposesActiveHeaderAndKeepsOtherRoutesProtected(t *testing.T) {
-	s := settingsFixture(t)
+	s := accessSettingsFixture(t)
 	snap, _ := s.Settings.Snapshot()
 	snap.Values.AdminTokenHeader = "X-SIMHarbor-Authorization"
 	if _, err := s.Settings.Save(snap.Values, config.SecretChanges{}, snap.Revision); err != nil {
 		t.Fatal(err)
 	}
 	w := request(s, http.MethodGet, "http://example.com/api/auth", "", "")
-	var data map[string]string
-	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &data) != nil || len(data) != 1 || data["admin_token_header"] != "Authorization" {
+	var data map[string]any
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &data) != nil || len(data) != 2 || data["admin_token_header"] != "Authorization" || data["skip_admin_token"] != false {
 		t.Fatal("discovery exposed pending settings or unexpected fields", w.Code)
 	}
 	if containsPrivate(w.Body.String(), s.Config.AdminToken, s.Config.AESKey, s.Config.AESIV) || w.Header().Get("Cache-Control") != "no-store" {
@@ -40,7 +40,7 @@ func TestAuthDiscoveryOnlyExposesActiveHeaderAndKeepsOtherRoutesProtected(t *tes
 
 func TestCustomAuthenticationHeaderCoexistsWithBasicAuthAndRejectsFallback(t *testing.T) {
 	token := strings.Repeat("SYNTHETIC", 4)
-	s, _ := fixture(t, 0, func(c *config.Config) {
+	s := httpFixture(t, func(c *config.Config) {
 		c.AdminToken = token
 		c.AdminTokenHeader = "X-SIMHarbor-Authorization"
 	})
@@ -84,7 +84,7 @@ func TestCustomAuthenticationHeaderCoexistsWithBasicAuthAndRejectsFallback(t *te
 	r.SetBasicAuth("synthetic-user", "synthetic-password")
 	w := httptest.NewRecorder()
 	proxy.ServeHTTP(w, r)
-	var metadata map[string]string
+	var metadata map[string]any
 	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &metadata) != nil || metadata["admin_token_header"] != "X-Simharbor-Authorization" {
 		t.Fatal("custom discovery behind Basic Auth failed", w.Code)
 	}

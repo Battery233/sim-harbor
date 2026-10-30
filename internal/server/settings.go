@@ -30,7 +30,7 @@ func settingsJSON(w http.ResponseWriter, r *http.Request, v any) bool {
 	return true
 }
 func (s *Server) settingsReady(w http.ResponseWriter) bool {
-	if len(s.Config.AdminToken) < 24 {
+	if !s.Config.SkipAdminToken && len(s.Config.AdminToken) < 24 {
 		reply(w, 403, map[string]string{"error": "settings_access_required"})
 		return false
 	}

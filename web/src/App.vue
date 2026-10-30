@@ -61,7 +61,10 @@ const loading = ref(false),
 const unlocking = ref(false)
 const showRaw = ref(false)
 const access = createAccessSession()
-const authHeaders = createAuthHeaders()
+const skipAdminToken = ref(false)
+const authHeaders = createAuthHeaders({
+  onConfig: (config) => (skipAdminToken.value = config.skip_admin_token),
+})
 const locked = ref(false),
   token = ref(''),
   now = ref(Date.now() / 1000),
@@ -432,7 +435,9 @@ onUnmounted(() => {
         <span class="env">{{
           state ? (state.environment === 'cloud' ? '云端' : '本地') : '管理入口'
         }}</span
-        ><button v-if="credential" class="quiet" @click="forget">退出访问</button>
+        ><button v-if="credential && !skipAdminToken" class="quiet" @click="forget">
+          退出访问
+        </button>
       </div>
     </header>
     <main>

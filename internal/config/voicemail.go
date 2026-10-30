@@ -39,7 +39,7 @@ func (c Config) validateVoicemailIngress() error {
 	if c.VoicemailMode() != "lan" && c.VoicemailMode() != "public" {
 		return errors.New("invalid voicemail upload mode")
 	}
-	if c.VoicemailMode() == "public" && len(c.AdminToken) < 24 {
+	if c.VoicemailMode() == "public" && !c.SkipAdminToken && len(c.AdminToken) < 24 {
 		return errors.New("public voicemail requires management authentication")
 	}
 	if c.VoicemailMaxStorageMiB != 0 && (c.VoicemailMaxStorageMiB < 16 || c.VoicemailMaxStorageMiB > 65536) {

@@ -9,6 +9,9 @@ const props = defineProps({
   highlighted: Boolean,
   onDownload: Function,
   onPlay: Function,
+  onMarkPlayed: Function,
+  playbackFailed: Boolean,
+  markingPlayed: Boolean,
   playback: Object,
   recordingLabel: String,
   request: Function,
@@ -73,6 +76,15 @@ function date(ts) {
         :media="call.voicemail_media_id"
         @changed="onRecordingChanged(call, $event)"
       />
+      <button
+        v-if="playbackFailed && !call.voicemail_played_at && playback?.id !== call.id"
+        type="button"
+        class="recording-mark-played"
+        :disabled="markingPlayed"
+        @click="onMarkPlayed(call)"
+      >
+        {{ markingPlayed ? '保存中…' : '标记为已播放' }}
+      </button>
       <span class="muted"
         >{{ (call.voicemail_bytes / 1024).toFixed(1) }} KB ·
         <RecordingDuration
@@ -83,6 +95,9 @@ function date(ts) {
         voicemail/。</span
       >
     </div>
+    <p v-if="playback?.id === call.id && playback.warning" class="tiny muted" role="status">
+      {{ playback.warning }}
+    </p>
     <p class="tiny" :class="{ 'call-push-sent': call.notification_state === 'sent' }">
       {{ callPushLabel(call)
       }}<span v-if="call.notification_accepted_at">

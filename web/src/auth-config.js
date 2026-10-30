@@ -1,6 +1,6 @@
-// Fetch only the active header name before sending a management credential.
+// Fetch the active token policy before sending a management credential.
 // Shared by API and file requests; never attach credentials to discovery.
-export function createAuthHeaders({ fetcher = fetch, timeout = 10000 } = {}) {
+export function createAuthHeaders({ fetcher = fetch, timeout = 10000, onConfig } = {}) {
   let pending
   function load() {
     if (pending) return pending
@@ -22,13 +22,21 @@ export function createAuthHeaders({ fetcher = fetch, timeout = 10000 } = {}) {
         const data = await response.json()
         if (
           !data ||
-          Object.keys(data).length !== 1 ||
+          Object.keys(data).some(
+            (key) => !['admin_token_header', 'skip_admin_token'].includes(key),
+          ) ||
+          (Object.hasOwn(data, 'skip_admin_token') && typeof data.skip_admin_token !== 'boolean') ||
           typeof data.admin_token_header !== 'string' ||
           data.admin_token_header.length > 128 ||
           !/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(data.admin_token_header)
         )
           throw new Error('invalid authentication header')
-        return data.admin_token_header
+        const config = {
+          admin_token_header: data.admin_token_header,
+          skip_admin_token: data.skip_admin_token === true,
+        }
+        if (pending === request) onConfig?.(config)
+        return config
       } catch {
         throw new Error('无法读取鉴权设置，请刷新页面后重试。')
       } finally {
@@ -43,8 +51,10 @@ export function createAuthHeaders({ fetcher = fetch, timeout = 10000 } = {}) {
   }
   return {
     async get(credential) {
-      const name = await load()
-      return credential ? { [name]: 'Bearer ' + credential } : {}
+      const config = await load()
+      return credential && !config.skip_admin_token
+        ? { [config.admin_token_header]: 'Bearer ' + credential }
+        : {}
     },
     reset() {
       pending = undefined

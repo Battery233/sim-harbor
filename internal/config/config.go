@@ -41,6 +41,7 @@ type Config struct {
 	AESIVEnv               string         `json:"aes_iv_env"`
 	AdminTokenEnv          string         `json:"admin_token_env"`
 	AdminTokenHeader       string         `json:"admin_token_header,omitempty"`
+	SkipAdminToken         bool           `json:"skip_admin_token,omitempty"`
 	BarkKeyEnv             string         `json:"bark_key_env"`
 	BarkBaseURL            string         `json:"bark_base_url"`
 	PublicURL              string         `json:"public_url"`
@@ -176,7 +177,7 @@ func (c *Config) Validate() error {
 	if c.AESMode > 0 && (len(c.AESKey) != 16 || len(c.AESIV) != 16) {
 		return errors.New("AES key and IV must each contain 16 bytes in configured environment variables")
 	}
-	if (!loopback(c.HTTPAddr) || c.Environment == "cloud") && len(c.AdminToken) < 24 {
+	if !c.SkipAdminToken && (!loopback(c.HTTPAddr) || c.Environment == "cloud") && len(c.AdminToken) < 24 {
 		return errors.New("non-loopback/cloud management requires an access token of at least 24 characters")
 	}
 	if len(c.DeviceCIDRs) == 0 && c.AllowlistEnabled() {

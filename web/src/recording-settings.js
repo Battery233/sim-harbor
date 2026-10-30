@@ -29,6 +29,7 @@ export function normalizedSettingsValues(values) {
     backup_max_storage_mib: values.backup_max_storage_mib || 0,
     device_cidrs: values.device_cidrs || [],
     admin_token_header: values.admin_token_header || '',
+    skip_admin_token: values.skip_admin_token === true,
     device_allowlist_enabled: values.device_allowlist_enabled !== false,
     status_alerts_enabled: values.status_alerts_enabled !== false,
   }

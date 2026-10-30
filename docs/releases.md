@@ -1,6 +1,16 @@
 # 版本升级与维护
 
-本文说明 v1.1.7 的安装、升级和回退，Docker 镜像为 `ghcr.io/battery233/sim-harbor:1.1.7`。版本发布流程见[维护者发布指南](publishing.md)。应用在已认证的 `/api/state` 和健康接口 `/api/health` 返回 `version`，用于核对实际运行版本；直接请求受保护的健康接口返回 401，不等于容器不健康。
+本文说明候选版 v1.1.8-rc.1 的安装、升级和回退，Docker 镜像标签为 `ghcr.io/battery233/sim-harbor:1.1.8-rc.1`。版本发布流程见[维护者发布指南](publishing.md)。应用在管理 API `/api/state` 和健康接口 `/api/health` 返回 `version`，用于核对实际运行版本；默认需要管理凭据，显式跳过时由外层认证保护。直接请求受保护的健康接口返回 401，不等于容器不健康。
+
+## 从 v1.1.7 升级到 v1.1.8-rc.1
+
+本候选版增加录音播放失败后的手动已播放标记、AMR-NB 有界容错播放及可选的跳过面板凭据开关，完整变更见[更新记录](../CHANGELOG.md#118-rc1)。手动标记入口只在该条播放失败且仍未播放时出现；普通播放仍在音源成功启动后自动标记，下载不自动标记。异常录音可尝试播放，可能含杂音或缺失；保留 2 MiB 输入与 10 分钟播放保护，原文件和严格时长查询不变。
+
+**继续使用 schema 21，不新增数据库迁移或必填配置。** 从 v1.1.2～v1.1.7 升级沿用原配置、完整 Compose 文件、数据目录和两种备份格式，按下方[切换流程](#3-核对配置并切换)选择候选镜像。板子设置、录音上传地址、令牌和 Tunnel 不因升级改变。
+
+`skip_admin_token` 默认关闭。只有在全站、API、下载和源站均由外层认证保护、独立上传域名仅放行上传路径时，才在系统配置显式启用；保存并确认重启后生效，随后刷新网页。关闭开关恢复原 Token 校验，原值保留。回退到 v1.1.7 等不认识该字段的旧版前，先恢复凭据校验并确认有效 Token，再准备不含该字段的初始化和统一配置；关闭后重新保存的统一配置会省略此字段。详见[跳过面板凭据](configuration.md#跳过面板凭据)。
+
+升级后用已有录音核对网页播放、异常提示、手动标记和下载，并核对开关关闭时仍需面板凭据。启用后分别核对外层登录、API 和下载保护，未认证请求仍应由外层拒绝。
 
 ## 从 v1.1.6 升级到 v1.1.7
 
@@ -70,9 +80,9 @@
 
 ```sh
 git fetch origin --tags
-git checkout --detach v1.1.7
-docker build --platform linux/amd64 -t sim-harbor:1.1.7 .
-docker image inspect sim-harbor:1.1.7 --format '{{.Os}}/{{.Architecture}}'
+git checkout --detach v1.1.8-rc.1
+docker build --platform linux/amd64 -t sim-harbor:1.1.8-rc.1 .
+docker image inspect sim-harbor:1.1.8-rc.1 --format '{{.Os}}/{{.Architecture}}'
 ```
 
 需要构建指定提交时，检出对应提交并记录 SHA，便于追溯源码与镜像。
@@ -82,8 +92,8 @@ docker image inspect sim-harbor:1.1.7 --format '{{.Os}}/{{.Architecture}}'
 从 GHCR 拉取：
 
 ```sh
-docker pull ghcr.io/battery233/sim-harbor:1.1.7
-docker buildx imagetools inspect ghcr.io/battery233/sim-harbor:1.1.7
+docker pull ghcr.io/battery233/sim-harbor:1.1.8-rc.1
+docker buildx imagetools inspect ghcr.io/battery233/sim-harbor:1.1.8-rc.1
 ```
 
 确认包含目标架构。生产环境可进一步固定镜像清单摘要，使升级和回退目标可追溯。私有包使用具备 `read:packages` 权限的凭据在主机私密登录。
@@ -92,7 +102,7 @@ docker buildx imagetools inspect ghcr.io/battery233/sim-harbor:1.1.7
 
 下面沿用[Docker 安装](deployment-docker.md)中的项目名 `sim` 与 `deploy/site.private.yaml`。既有实例按实际参数操作，保留原项目名、全部覆盖文件、端口、数据卷和数据目录。已有 `deploy/release.private.yaml` 时，该文件始终放在最后。
 
-各版本升级小节说明相应版本的兼容性，其中镜像、页面名称和 ZIP 能力属于对应版本。升级当前版本先看[从 v1.1.6 升级到 v1.1.7](#从-v116-升级到-v117)，较早版本还需核对途经的迁移边界；不需要逐个部署中间版本。下方通用操作示例统一使用 `1.1.7`，逐条执行，任何一步失败后停止并保留现场。
+各版本升级小节说明相应版本的兼容性，其中镜像、页面名称和 ZIP 能力属于对应版本。升级当前版本先看[从 v1.1.7 升级到 v1.1.8-rc.1](#从-v117-升级到-v118-rc1)，较早版本还需核对途经的迁移边界；不需要逐个部署中间版本。下方通用操作示例统一使用 `1.1.8-rc.1`，逐条执行，任何一步失败后停止并保留现场。
 
 ### 从 v1.1.0 或候选版升级到 v1.1.1
 
@@ -172,7 +182,7 @@ v1.0.4 增加[允许分片时间差的组装](protocol-notes.md#允许分片时�
 ```yaml
 services:
   sim:
-    image: sim-harbor:1.1.7
+    image: sim-harbor:1.1.8-rc.1
 ```
 
 使用 GHCR 时将 image 换成已验证的完整镜像引用。这个文件集中设置发布镜像，端口、配置、数据挂载与运行策略沿用原文件。旧私有文件若固定了 `sim:旧版本`，本文件必须放在最后以使新镜像生效。
@@ -198,7 +208,7 @@ docker compose --env-file .env -p sim \
 
 ### 4. 升级验收
 
-- 容器健康、镜像版本/架构正确；网页或已认证 API 的 `version` 为 `1.1.7`。
+- 容器健康、镜像版本/架构正确；网页或已认证 API 的 `version` 为 `1.1.8-rc.1`。
 - 数据目录、卷、HTTP/TCP 端口及私有配置未意外变化；历史、卡名称、备注和推送开关保持。
 - 板子重连后查询新鲜状态，确认当前会话、两卡身份和注册情况。
 - 自然到达的短信能入库，按卡通知和点击链接正常；如需 Bark 连接测试，由操作者确认执行。
@@ -230,6 +240,6 @@ docker system df
 
 ## 公网录音配置的兼容性
 
-公网录音入口从 v1.1.1-rc.4 起支持，不包含在 rc.3 及更早镜像中。容量提醒去重进度单独保存在数据目录的 `voicemail-capacity.private.json`；v1.1.2 起另在数据库记录可查询的容量任务历史，随 ZIP 保存。rc.4 使用 schema 19，rc.5 与正式版 v1.1.1 使用 schema 20，v1.1.2～v1.1.7 使用 schema 21；旧配置缺少新字段时沿用局域网 HTTP，保留地址、令牌、卡槽、设备白名单和既有开关，无需为升级修改配置或板子。
+公网录音入口从 v1.1.1-rc.4 起支持，不包含在 rc.3 及更早镜像中。容量提醒去重进度单独保存在数据目录的 `voicemail-capacity.private.json`；v1.1.2 起另在数据库记录可查询的容量任务历史，随 ZIP 保存。rc.4 使用 schema 19，rc.5 与正式版 v1.1.1 使用 schema 20，v1.1.2～v1.1.8-rc.1 使用 schema 21；旧配置缺少新字段时沿用局域网 HTTP，保留地址、令牌、卡槽、设备白名单和既有开关，无需为升级修改配置或板子。
 
 主动选择公网模式后，配置可能包含 `voicemail_upload_mode`、`voicemail_proxy_cidrs`、`voicemail_max_storage_mib`，rc.3 及更早版本采用严格字段校验，不能直接读取这些字段。回退前保留最新配置与录音目录，在新版先关闭应用录音接收并重启，按需另行停用板子；准备独立的旧版兼容私有配置，移除上述三个字段，并清空公网 `voicemail_amr_url`（旧版只接受局域网 HTTP）。不要把公网模式直接切回局域网但保留 HTTPS 地址后保存。配置兼容不能替代数据库兼容：从 rc.5 或 v1.1.1 及后续版本回退到 schema 19 的旧程序，还必须使用兼容旧版的升级前数据库；schema 19 也不能交给已发布的 v1.0.4。核对后再按原项目和 Compose 文件操作，不自动回退或删除录音。

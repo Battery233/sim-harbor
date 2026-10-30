@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import InfoTip from './InfoTip.vue'
 import DeleteRecording from './DeleteRecording.vue'
 import RecordingDuration from './RecordingDuration.vue'
@@ -18,11 +18,12 @@ const view = ref({ items: [], next: 0 }),
 const durationRefresh = ref(0)
 let stopped = false
 const playingMedia = new Map()
-const markingPlayed = new Set()
+const markingPlayed = reactive(new Set())
+const failedRecordings = reactive(new Set())
 function badge(item) {
   return recordingBadge(1, item.played_at ? 0 : 1)
 }
-async function confirmPlayed(item) {
+async function confirmPlayed(item, manual = false) {
   if (!item || item.played_at || markingPlayed.has(item.id)) return
   markingPlayed.add(item.id)
   try {
@@ -30,11 +31,18 @@ async function confirmPlayed(item) {
       (...args) => props.request(...args),
       item.file_name?.replace(/\.amr$/, ''),
     )
+    failedRecordings.delete(item.id)
   } catch (e) {
-    if (!stopped) error.value = '录音已开始播放，但播放标记保存失败：' + e.message
+    if (!stopped)
+      error.value =
+        (manual ? '播放标记保存失败：' : '录音已开始播放，但播放标记保存失败：') + e.message
   } finally {
     markingPlayed.delete(item.id)
   }
+}
+function markPlayed(item) {
+  error.value = ''
+  return confirmPlayed(item, true)
 }
 const flow = createUnlinkedVoicemailFlow({
   request: (...args) => props.request(...args),
@@ -83,7 +91,10 @@ async function play(item) {
     playingMedia.set(item.id, item)
     await player.toggle(item)
   } catch (e) {
-    if (!stopped) error.value = e.message
+    if (!stopped) {
+      failedRecordings.add(item.id)
+      error.value = e.message
+    }
   }
 }
 async function download(item) {
@@ -199,7 +210,19 @@ onUnmounted(() => {
             :media="item.file_name?.replace(/\.amr$/, '')"
             @changed="recordingChanged"
           />
+          <button
+            v-if="failedRecordings.has(item.id) && !item.played_at && playback.id !== item.id"
+            type="button"
+            class="recording-mark-played"
+            :disabled="markingPlayed.has(item.id)"
+            @click="markPlayed(item)"
+          >
+            {{ markingPlayed.has(item.id) ? '保存中…' : '标记为已播放' }}
+          </button>
         </div>
+        <p v-if="playback.id === item.id && playback.warning" class="tiny muted" role="status">
+          {{ playback.warning }}
+        </p>
       </li>
     </ul>
     <button v-if="view.next" type="button" :disabled="loading" @click="load(true)">
