@@ -38,4 +38,13 @@
 
 GitHub Release、镜像发布与云端部署各有独立结果，按上述顺序核对后，再安排实例更新。
 
+## 源码与发布排障
+
+| 现象 | 处理方式 |
+| --- | --- |
+| HTTPS 拉取/推送停在 Password 提示 | 使用 GitHub Personal Access Token，或沿用已配置的 SSH 认证；见 [GitHub 认证说明](https://docs.github.com/en/get-started/git-basics/why-is-git-always-asking-for-my-credentials) |
+| 本地能看到标签，GitHub 没有 | 核对标签指向，再单独推送该标签；分支与标签分别同步 |
+| GitHub 没有 Release | 在 Releases 页面基于已有标签创建，按[发布顺序](#发布顺序)操作 |
+| Packages 中没有镜像或拉取失败 | 核对 Release image 工作流结果、镜像标签、目标架构与包可见性；也可按[版本维护](releases.md#获取镜像)从源码构建 |
+
 镜像发布实现参考 [GitHub 官方容器发布说明](https://docs.github.com/en/actions/tutorials/publish-packages/publish-docker-images)与 [Docker 多架构构建说明](https://docs.docker.com/build/ci/github-actions/multi-platform/)。

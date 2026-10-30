@@ -13,7 +13,7 @@ git clone https://github.com/Battery233/sim-harbor.git
 cd sim-harbor
 ```
 
-HTTPS 拉取使用 GitHub 支持的访问凭据；也可在已配置 SSH 的主机使用 `git@github.com:Battery233/sim-harbor.git`。认证排障见[故障排查](troubleshooting.md#源码拉取与版本发布)。
+也可在已配置 SSH 的主机使用 `git@github.com:Battery233/sim-harbor.git`。获取源码时遇到认证问题，见[维护者指南](publishing.md#源码与发布排障)。
 
 已有实例可保留当前配置，按[版本维护](releases.md)完成备份与更新。
 
@@ -89,7 +89,7 @@ docker compose --env-file .env -p sim -f compose.yaml -f deploy/site.private.yam
 
 这里的宿主端口来自生成的 `.env`。如已有其他端口配置，按自己的值核对。
 
-在运行主机打开 `http://127.0.0.1:18880`，使用 `.env` 中的管理员 Token 登录。远程服务器可先通过 SSH 转发：
+首次启动时，在运行主机打开 `http://127.0.0.1:18880`，使用 `.env` 中生成的管理员 Token 登录。后续登录使用当前生效的面板凭据；已配置[跳过面板凭据](configuration.md#跳过面板凭据)的实例通过既有外层认证进入。远程服务器可先通过 SSH 转发：
 
 ```sh
 ssh -N -L 18880:127.0.0.1:18880 your-user@your-server
