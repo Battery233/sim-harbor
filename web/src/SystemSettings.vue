@@ -280,16 +280,6 @@ onUnmounted(() => {
       <fieldset :disabled="busy || restarting || locked">
         <div v-for="group in recording ? [] : groups" :key="group.title" class="settings-group">
           <h3>{{ group.title }}</h3>
-          <template v-if="group.title === '管理访问'">
-            <label class="consent"
-              ><input v-model="values.skip_admin_token" type="checkbox" />跳过面板访问凭据</label
-            >
-            <p class="tiny muted">
-              默认关闭。仅在 Cloudflare Access 等已保护整个管理入口（含 API
-              和下载）、源站无法被绕过时开启。 录音上传域名仍须只开放上传路径。开启后不再校验面板
-              Token，原凭据保留；保存并重启应用后生效，随后刷新网页。
-            </p>
-          </template>
           <div class="settings-grid">
             <label v-for="field in group.fields" :key="field[0]"
               >{{ field[1]
@@ -389,21 +379,38 @@ onUnmounted(() => {
             </InfoTip>
           </h3>
           <div class="settings-grid">
-            <label v-for="field in secretFields" :key="field[0]"
-              >{{ field[1] }} · {{ snapshot.credentials_configured[field[0]] ? '已配置' : '未配置'
-              }}<input
-                v-model="secrets[field[0]]"
-                type="password"
-                autocomplete="new-password"
-                :placeholder="
-                  snapshot.credentials_configured[field[0]] ? '留空保留原值' : '输入后保存'
-                "
-                maxlength="512"
-            /></label>
+            <div v-for="field in secretFields" :key="field[0]" class="credential-field">
+              <label
+                >{{ field[1] }} ·
+                {{ snapshot.credentials_configured[field[0]] ? '已配置' : '未配置'
+                }}<input
+                  v-model="secrets[field[0]]"
+                  type="password"
+                  autocomplete="new-password"
+                  :placeholder="
+                    snapshot.credentials_configured[field[0]] ? '留空保留原值' : '输入后保存'
+                  "
+                  maxlength="512"
+              /></label>
+              <template v-if="field[0] === 'admin_token'">
+                <label class="consent"
+                  ><input
+                    v-model="values.skip_admin_token"
+                    type="checkbox"
+                  />跳过面板访问凭据</label
+                >
+                <p class="tiny muted">
+                  默认关闭。仅在 Cloudflare Access 等已保护整个管理入口（含 API
+                  和下载）、源站无法被绕过时开启。录音上传域名仍须只开放上传路径。开启后不再校验面板
+                  Token，原凭据保留；保存并重启应用后生效，随后刷新网页。
+                </p>
+              </template>
+              <label v-if="field[0] === 'bark_key'" class="consent"
+                ><input v-model="secrets.clear_bark" type="checkbox" />清除Bark
+                Key并关闭后续推送</label
+              >
+            </div>
           </div>
-          <label class="consent"
-            ><input v-model="secrets.clear_bark" type="checkbox" />清除Bark Key并关闭后续推送</label
-          >
         </div>
         <div v-if="recording" class="settings-group">
           <h3>

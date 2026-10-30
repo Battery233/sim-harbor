@@ -1252,6 +1252,12 @@ button.danger {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 18px;
 }
+.credential-field {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-width: 0;
+}
 .settings-grid label:not(.consent),
 .settings-group > label:not(.consent) {
   display: flex;

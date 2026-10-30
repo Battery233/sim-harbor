@@ -1,7 +1,7 @@
 services:
   sim:
     build: .
-    image: ${SIM_IMAGE:-sim-harbor:1.1.8-rc.1}
+    image: ${SIM_IMAGE:-sim-harbor:1.1.8}
     restart: unless-stopped
     init: true
     read_only: true

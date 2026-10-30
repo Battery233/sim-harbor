@@ -33,7 +33,7 @@ Compose 默认在运行主机的 `127.0.0.1:18880` 提供网页。要让局域�
 ```yaml
 services:
   sim:
-    image: ${SIM_IMAGE:-sim-harbor:1.1.8-rc.1}
+    image: ${SIM_IMAGE:-sim-harbor:1.1.8}
     ports: !override
       - "192.168.1.10:18880:8080"
       - "${SIM_DEVICE_BIND:-127.0.0.1}:${SIM_DEVICE_PORT:-39090}:9000"
