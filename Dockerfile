@@ -1,12 +1,12 @@
 # Static assets are shared by all targets; run Node/WASM on the native builder.
-FROM --platform=$BUILDPLATFORM node:26.7.0-alpine3.23 AS web
+FROM --platform=$BUILDPLATFORM node:26.13.1-alpine3.23 AS web
 WORKDIR /src/web
 COPY web/package.json web/package-lock.json ./
 RUN npm ci
 COPY web/ ./
 RUN npm test && npm run build
 
-FROM golang:1.26.9-alpine3.23 AS backend
+FROM golang:1.26.11-alpine3.23 AS backend
 ENV GOTOOLCHAIN=local
 WORKDIR /src
 COPY go.mod go.sum ./

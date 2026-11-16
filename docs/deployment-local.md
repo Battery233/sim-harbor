@@ -47,7 +47,7 @@ HTTP 适合受信局域网内访问；需要加密或外出访问时，可配置
 
 ## 源码方式：macOS / Linux
 
-准备满足 [go.mod](../go.mod) 要求的 Go 工具链和兼容的 Node.js/npm；当前 Docker 构建基线为 Go 1.26.9、Node.js 26.7.0。文中的 `GOTOOLCHAIN=local` 使用本机已安装工具链，先用 `go version` 确认可用。
+准备满足 [go.mod](../go.mod) 要求的 Go 工具链和兼容的 Node.js/npm；当前 Docker 构建基线为 Go 1.26.11、Node.js 26.13.1 LTS。文中的 `GOTOOLCHAIN=local` 使用本机已安装工具链，先用 `go version` 确认可用。
 
 按 Docker 安装页生成私有文件后，直接将 JSON 调整为下表值；接下来使用本节的源码构建与运行命令：
 
